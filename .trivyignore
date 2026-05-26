@@ -1,0 +1,2 @@
+# CVE-2026-31812: quinn-proto DoS via QUIC - waiting for @temporalio/core-bridge update
+CVE-2026-31812

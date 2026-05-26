@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Exit on first error
+set -e
+
+echo "Running lint-staged..."
+npx --no-install lint-staged
+
+echo "Running gitleaks..."
+gitleaks protect --staged
+
+echo "Running trivy..."
+trivy fs --quiet --severity HIGH,CRITICAL --ignore-unfixed .
+
+echo "Running npm audit..."
+npm audit --audit-level=high
+
+echo "Running tests..."
+npm test

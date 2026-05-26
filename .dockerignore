@@ -1,0 +1,90 @@
+# Node artifacts
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build outputs
+/dist
+/build
+/coverage
+*.tsbuildinfo
+
+# Env files (do not bake secrets)
+.env
+.env.*
+!.env.example
+
+# Testing
+/test
+/tests
+/__tests__
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+jest.config.*
+vitest.config.*
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE*
+*.md
+/docs
+
+# VCS and CI/CD
+.git
+.gitignore
+.gitattributes
+.github
+.gitlab-ci.yml
+.travis.yml
+.circleci
+
+# OS/Editor files
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Docker related
+Dockerfile*
+**/.dockerignore
+docker-compose*.yml
+.dockerignore
+
+# Package manager artifacts
+.npm
+.yarn
+.pnpm-store
+yarn.lock
+pnpm-lock.yaml
+
+# Logs and temp files
+logs
+*.log
+tmp
+temp
+.tmp
+
+# Development tools
+.eslintrc.*
+.prettierrc*
+.editorconfig
+webpack.config.*
+rollup.config.*
+vite.config.*
+
+# Keep TypeScript configs needed for build
+# tsconfig.json - needed for build
+# tsconfig.build.json - needed for build
+
+# Runtime/deployment configs (if not needed in container)
+pm2.json
+ecosystem.config.js

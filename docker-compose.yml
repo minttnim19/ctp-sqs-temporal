@@ -1,0 +1,118 @@
+services:
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_SEEDS=postgres
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PWD=${DB_PASSWORD:-password}
+      - POSTGRES_DB=${TEMPORAL_DB:-temporal}
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - my-network
+
+  temporal-ui:
+    image: temporalio/ui:2.32.0
+    container_name: temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_UI_PORT=8080
+    ports:
+      - "8088:8080"
+    depends_on:
+      - temporal
+    networks:
+      - my-network
+
+  localstack:
+    image: localstack/localstack:3.4.0
+    container_name: localstack
+    environment:
+      - SERVICES=sqs
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT=1
+    ports:
+      - "4566:4566"
+    volumes:
+      - "localstack_data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack-init:/etc/localstack/init/ready.d"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-lc",
+          "(awslocal --version || pipx install awscli-local) && awslocal sqs list-queues >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - my-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - my-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-prebook}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  application:
+    build:
+      context: .
+      target: builder
+    container_name: ctp-sqs-temporal
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    env_file:
+      - .env
+    command: npm run dev
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    networks:
+      - my-network
+
+volumes:
+  postgres_data:
+    driver: local
+  localstack_data:
+    driver: local
+
+networks:
+  my-network:
+    name: my-network
+    driver: bridge

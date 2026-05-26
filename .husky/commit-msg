@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Validate commit message format (Conventional Commits)
+set -e
+
+npx --no-install commitlint --edit "$1"
+
