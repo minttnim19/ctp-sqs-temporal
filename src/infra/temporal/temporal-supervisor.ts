@@ -63,7 +63,8 @@ export function startTemporalWorkers(isShuttingDown: () => boolean): Map<WorkerR
       const current = backoffByRole.get(role) as number;
       const next = Math.min(current * 2, 30000);
       backoffByRole.set(role, next);
-      setTimeout(() => spawnWorker(role), current);
+      const restartTimer = setTimeout(() => spawnWorker(role), current);
+      restartTimer.unref?.();
     });
 
     processes.set(role, child);
@@ -116,6 +117,7 @@ async function stopWorkerList(
             logger.warn({ timeoutMs, role }, "Temporal worker shutdown timed out");
             finish();
           }, timeoutMs);
+          timeout.unref?.();
           worker.once("close", () => {
             clearTimeout(timeout);
             finish();

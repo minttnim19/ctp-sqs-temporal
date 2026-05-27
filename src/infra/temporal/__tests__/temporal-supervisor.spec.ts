@@ -38,6 +38,11 @@ describe("temporal-supervisor", () => {
     (existsSync as jest.Mock).mockReturnValue(true);
   });
 
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   describe("startTemporalWorkers", () => {
     it("returns empty map when SPAWN_TEMPORAL_WORKER is disabled", async () => {
       jest.resetModules();
@@ -144,7 +149,6 @@ describe("temporal-supervisor", () => {
       children[0].emit("close", 1, null);
       jest.runAllTimers();
       expect((spawn as jest.Mock).mock.calls.length).toBe(callCount);
-      jest.useRealTimers();
     });
 
     it("restarts worker with backoff when not shutting down and exit code non-zero", () => {
@@ -167,7 +171,6 @@ describe("temporal-supervisor", () => {
 
       // Prevent the restarted worker from looping
       shuttingDown = true;
-      jest.useRealTimers();
     });
 
     it("uses default backoff again after a worker respawns successfully", () => {
@@ -194,7 +197,6 @@ describe("temporal-supervisor", () => {
       expect((spawn as jest.Mock).mock.calls).toHaveLength(4);
 
       shuttingDown = true;
-      jest.useRealTimers();
     });
 
     it("logs info when worker exits with code 0", () => {
@@ -214,7 +216,6 @@ describe("temporal-supervisor", () => {
       );
 
       shuttingDown = true;
-      jest.useRealTimers();
     });
   });
 
@@ -250,7 +251,6 @@ describe("temporal-supervisor", () => {
         expect.objectContaining({ timeoutMs: 100 }),
         "Temporal worker shutdown timed out",
       );
-      jest.useRealTimers();
     });
 
     it("does not send SIGTERM when worker is already killed", async () => {
@@ -276,7 +276,6 @@ describe("temporal-supervisor", () => {
       await stopPromise;
 
       expect(logger.warn).toHaveBeenCalledTimes(1);
-      jest.useRealTimers();
     });
   });
 
