@@ -30,7 +30,7 @@ Notes:
 - In Docker: `wget -qO- http://127.0.0.1:3000/healthz`
 - On host: `http://localhost:3000/healthz`
 
-The health response includes SQS poller status and Temporal connectivity. Use `/healthz` for readiness/liveness probes.
+The health endpoints `/`, `/health`, and `/healthz` return `200 OK` with plain text `ok`.
 
 ## Manual API
 

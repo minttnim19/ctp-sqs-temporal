@@ -235,11 +235,15 @@ const stringifyData = (data: unknown): string => {
 const toRecord = (value: unknown): UnknownRecord | undefined =>
   typeof value === "object" && value !== null ? (value as UnknownRecord) : undefined;
 
-const getString = (source: UnknownRecord | undefined, field: string): string | undefined =>
-  typeof source?.[field] === "string" ? source[field] : undefined;
+const getString = (source: UnknownRecord | undefined, field: string): string | undefined => {
+  const value = source?.[field];
+  return typeof value === "string" ? value : undefined;
+};
 
-const getNumber = (source: UnknownRecord | undefined, field: string): number | undefined =>
-  typeof source?.[field] === "number" ? source[field] : undefined;
+const getNumber = (source: UnknownRecord | undefined, field: string): number | undefined => {
+  const value = source?.[field];
+  return typeof value === "number" ? value : undefined;
+};
 
 const coalesceNonEmptyString = (value: string | undefined | null, fallback: string): string =>
   value === undefined || value === null || value === "" ? fallback : value;

@@ -1,34 +1,22 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
 
 import { logger } from "@/infra/logger/col-logger";
-import type { SqsPoller } from "@/infra/aws/sqs-poller";
 import type { MessageHandler } from "@/application/ports/message-handler";
 
 type HealthServerOptions = {
-  pollers: SqsPoller[];
   port: number;
   manualApi?: {
     enabled: boolean;
     resolveHandler: (queueName: string) => MessageHandler<unknown> | undefined;
   };
-  temporalHealth?: () => Promise<TemporalHealthResult>;
 };
-
-type TemporalHealthResult = {
-  ok: boolean;
-  status?: string;
-  error?: string;
-};
+type HealthHandlerOptions = Omit<HealthServerOptions, "port">;
 
 const HEALTH_PATHS = new Set(["/", "/health", "/healthz"]);
 const MANUAL_API_PATH = "/api/manual";
 const MAX_BODY_BYTES = 1_000_000;
 
-export function createHealthHandler({
-  pollers,
-  manualApi,
-  temporalHealth,
-}: Omit<HealthServerOptions, "port">) {
+export function createHealthHandler({ manualApi }: HealthHandlerOptions = {}) {
   return async (req: IncomingMessage, res: ServerResponse<IncomingMessage>) => {
     const method = req.method ?? "GET";
     const path = (req.url ?? "/").split("?")[0];
@@ -38,48 +26,28 @@ export function createHealthHandler({
       return;
     }
 
-    if (!HEALTH_PATHS.has(path)) {
-      sendJson(res, 404, { status: "not_found" });
+    if (HEALTH_PATHS.has(path)) {
+      if (method !== "GET" && method !== "HEAD") {
+        sendJson(res, 405, { status: "method_not_allowed" }, { Allow: "GET, HEAD" });
+        return;
+      }
+
+      if (method === "HEAD") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end();
+        return;
+      }
+
+      sendText(res, 200, "ok");
       return;
     }
 
-    if (method !== "GET" && method !== "HEAD") {
-      sendJson(res, 405, { status: "method_not_allowed" }, { Allow: "GET, HEAD" });
-      return;
-    }
-
-    const runningPollers = pollers.filter((poller) => poller.isRunning()).length;
-    const allRunning = pollers.length > 0 && runningPollers === pollers.length;
-    const temporalResult = temporalHealth ? await temporalHealth() : undefined;
-    const temporalOk = temporalResult ? temporalResult.ok : true;
-
-    const response = {
-      status: allRunning && temporalOk ? "ok" : "error",
-      details: {
-        pollersTotal: pollers.length,
-        pollersRunning: runningPollers,
-        temporal: temporalResult,
-      },
-    };
-
-    const statusCode = allRunning && temporalOk ? 200 : 503;
-    if (method === "HEAD") {
-      res.writeHead(statusCode);
-      res.end();
-      return;
-    }
-
-    sendJson(res, statusCode, response);
+    sendJson(res, 404, { status: "not_found" });
   };
 }
 
-export function startHealthServer({
-  pollers,
-  port,
-  manualApi,
-  temporalHealth,
-}: HealthServerOptions): Server {
-  const server = createServer(createHealthHandler({ pollers, manualApi, temporalHealth }));
+export function startHealthServer({ port, manualApi }: HealthServerOptions): Server {
+  const server = createServer(createHealthHandler({ manualApi }));
 
   server.listen(port, () => {
     logger.info({ port }, "Health check server listening");
@@ -192,6 +160,16 @@ function sendJson(
 ) {
   res.writeHead(status, { "Content-Type": "application/json", ...headers });
   res.end(JSON.stringify(payload));
+}
+
+function sendText(
+  res: ServerResponse<IncomingMessage>,
+  status: number,
+  payload: string,
+  headers: Record<string, string> = {},
+) {
+  res.writeHead(status, { "Content-Type": "text/plain", ...headers });
+  res.end(payload);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

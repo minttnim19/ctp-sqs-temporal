@@ -23,10 +23,6 @@ type InvocationResult = {
   headers: Record<string, string>;
 };
 
-function makePoller(isRunning: boolean) {
-  return { isRunning: () => isRunning } as any;
-}
-
 async function invokeHandler(
   handler: ReturnType<typeof createHealthHandler>,
   options: InvokeOptions = {},
@@ -37,7 +33,7 @@ async function invokeHandler(
 
   const chunks =
     options.bodyChunks ??
-    (options.body !== undefined ? [Buffer.from(JSON.stringify(options.body))] : []);
+    (options.body === undefined ? [] : [Buffer.from(JSON.stringify(options.body))]);
 
   const req = {
     method: options.method,
@@ -79,94 +75,47 @@ describe("createHealthHandler", () => {
   });
 
   describe("health endpoints", () => {
-    it("returns 200 with status=ok when all pollers running", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true), makePoller(true)] });
-      const res = await invokeHandler(handler, { method: "GET", url: "/health" });
+    it.each(["/", "/health", "/healthz"])("GET %s returns plain text ok", async (url) => {
+      const handler = createHealthHandler();
+      const res = await invokeHandler(handler, { method: "GET", url });
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ status: "ok" });
+      expect(res.headers).toMatchObject({ "Content-Type": "text/plain" });
+      expect(res.body).toBe("ok");
     });
 
-    it("returns 503 with status=error when a poller is not running", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true), makePoller(false)] });
-      const res = await invokeHandler(handler, { method: "GET", url: "/health" });
-      expect(res.status).toBe(503);
-      expect(res.body).toMatchObject({ status: "error" });
-    });
-
-    it("returns 503 when pollers array is empty", async () => {
-      const handler = createHealthHandler({ pollers: [] });
-      const res = await invokeHandler(handler, { method: "GET", url: "/health" });
-      expect(res.status).toBe(503);
-    });
-
-    it("GET / behaves the same as /health", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true)] });
-      const res = await invokeHandler(handler, { method: "GET", url: "/" });
-      expect(res.status).toBe(200);
-    });
-
-    it("GET /healthz behaves the same as /health", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true)] });
-      const res = await invokeHandler(handler, { method: "GET", url: "/healthz" });
-      expect(res.status).toBe(200);
-    });
-
-    it("HEAD /health returns empty body when healthy", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true)] });
+    it("HEAD /health returns empty body", async () => {
+      const handler = createHealthHandler();
       const res = await invokeHandler(handler, { method: "HEAD", url: "/health" });
       expect(res.status).toBe(200);
+      expect(res.headers).toMatchObject({ "Content-Type": "text/plain" });
       expect(res.body).toBeNull();
     });
 
-    it("HEAD /health returns 503 when not healthy", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(false)] });
-      const res = await invokeHandler(handler, { method: "HEAD", url: "/health" });
-      expect(res.status).toBe(503);
-    });
-
     it("POST /health returns 405 with Allow header", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true)] });
+      const handler = createHealthHandler();
       const res = await invokeHandler(handler, { method: "POST", url: "/health" });
       expect(res.status).toBe(405);
       expect(res.headers).toMatchObject({ Allow: "GET, HEAD" });
     });
 
     it("returns 404 for unknown paths", async () => {
-      const handler = createHealthHandler({ pollers: [makePoller(true)] });
+      const handler = createHealthHandler();
       const res = await invokeHandler(handler, { method: "GET", url: "/unknown" });
       expect(res.status).toBe(404);
       expect(res.body).toMatchObject({ status: "not_found" });
     });
 
-    it("temporalHealth ok=true keeps 200", async () => {
-      const handler = createHealthHandler({
-        pollers: [makePoller(true)],
-        temporalHealth: async () => ({ ok: true }),
-      });
-      const res = await invokeHandler(handler, { method: "GET", url: "/health" });
-      expect(res.status).toBe(200);
-    });
-
-    it("temporalHealth ok=false downgrades to 503", async () => {
-      const handler = createHealthHandler({
-        pollers: [makePoller(true)],
-        temporalHealth: async () => ({ ok: false }),
-      });
-      const res = await invokeHandler(handler, { method: "GET", url: "/health" });
-      expect(res.status).toBe(503);
-    });
-
     it("defaults missing method and url to GET /", async () => {
-      const handler = createHealthHandler({ pollers: [] });
+      const handler = createHealthHandler();
       const res = await invokeHandler(handler);
-      expect(res.status).toBe(503);
-      expect(res.body).toMatchObject({ status: "error" });
+      expect(res.status).toBe(200);
+      expect(res.body).toBe("ok");
     });
   });
 
   describe("/api/manual endpoint", () => {
     it("returns 403 when manualApi is not provided", async () => {
-      const handler = createHealthHandler({ pollers: [] });
+      const handler = createHealthHandler();
       const res = await invokeHandler(handler, {
         method: "POST",
         url: "/api/manual",
@@ -178,7 +127,6 @@ describe("createHealthHandler", () => {
 
     it("returns 403 when manualApi.enabled is false", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: false, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -191,7 +139,6 @@ describe("createHealthHandler", () => {
 
     it("returns 405 for GET /api/manual when enabled", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, { method: "GET", url: "/api/manual" });
@@ -202,7 +149,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when body is empty", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -216,7 +162,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 for invalid JSON body", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -230,7 +175,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when queueName is missing", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -244,7 +188,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when queueName is not a string", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -257,7 +200,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when message is missing", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -271,7 +213,6 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when attributes is not a plain object", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -285,7 +226,6 @@ describe("createHealthHandler", () => {
 
     it("returns 404 when no handler found for queueName", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
@@ -300,7 +240,6 @@ describe("createHealthHandler", () => {
     it("returns 200 and calls handler when valid request with matching handler", async () => {
       const mockHandle = jest.fn().mockResolvedValue(undefined);
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: {
           enabled: true,
           resolveHandler: () => ({ handle: mockHandle }),
@@ -327,7 +266,6 @@ describe("createHealthHandler", () => {
     it("returns 200 with attributes normalized to string values", async () => {
       const mockHandle = jest.fn().mockResolvedValue(undefined);
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: {
           enabled: true,
           resolveHandler: () => ({ handle: mockHandle }),
@@ -350,7 +288,6 @@ describe("createHealthHandler", () => {
     it("returns 500 when handler.handle throws", async () => {
       const mockHandle = jest.fn().mockRejectedValue(new Error("handler error"));
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: {
           enabled: true,
           resolveHandler: () => ({ handle: mockHandle }),
@@ -373,7 +310,6 @@ describe("createHealthHandler", () => {
 
     it("returns 413 when body exceeds 1MB", async () => {
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: { enabled: true, resolveHandler: () => undefined },
       });
       const largeBody = Buffer.alloc(1_100_000, "x");
@@ -388,7 +324,6 @@ describe("createHealthHandler", () => {
     it("accepts non-Buffer request chunks for manual API bodies", async () => {
       const mockHandle = jest.fn().mockResolvedValue(undefined);
       const handler = createHealthHandler({
-        pollers: [],
         manualApi: {
           enabled: true,
           resolveHandler: () => ({ handle: mockHandle }),
@@ -432,7 +367,7 @@ describe("startHealthServer", () => {
       });
 
       const { startHealthServer: start } = await import("@/infra/healthcheck/health-server");
-      start({ pollers: [], port: 1234 });
+      start({ port: 1234 });
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({ port: 1234 }),
@@ -462,7 +397,7 @@ describe("startHealthServer", () => {
       });
 
       const { startHealthServer: start } = await import("@/infra/healthcheck/health-server");
-      start({ pollers: [], port: 0 });
+      start({ port: 0 });
 
       const err = new Error("test error");
       errorHandler?.(err);

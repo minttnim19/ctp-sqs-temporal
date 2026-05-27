@@ -18,6 +18,8 @@ import {
 } from "@/infra/http/http-client";
 import { logger } from "@/infra/logger/col-logger";
 
+const rejectAsError = (reason: Error): Promise<never> => Promise.reject(reason);
+
 describe("infra/http/http-client - interceptors", () => {
   afterEach(() => {
     jest.restoreAllMocks();
@@ -107,7 +109,9 @@ describe("infra/http/http-client - logging interceptors", () => {
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(axiosLikeError),
+        adapter: async () => {
+          throw axiosLikeError;
+        },
       }),
     ).rejects.toThrow("boom");
 
@@ -131,7 +135,9 @@ describe("infra/http/http-client - logging interceptors", () => {
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(axiosLikeError),
+        adapter: async () => {
+          throw axiosLikeError;
+        },
       }),
     ).rejects.toThrow("oops");
 
@@ -149,7 +155,9 @@ describe("infra/http/http-client - logging interceptors", () => {
     delete axiosLikeError.config;
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(axiosLikeError),
+        adapter: async () => {
+          throw axiosLikeError;
+        },
       }),
     ).rejects.toThrow("cfg missing");
     const errorCall = (logger.error as jest.Mock).mock.calls.find(
@@ -172,7 +180,9 @@ describe("infra/http/http-client - logging interceptors", () => {
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(axiosLikeError),
+        adapter: async () => {
+          throw axiosLikeError;
+        },
       }),
     ).rejects.toThrow("timed");
 
@@ -191,7 +201,9 @@ describe("infra/http/http-client - logging interceptors", () => {
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(nonAxiosError),
+        adapter: async () => {
+          throw nonAxiosError;
+        },
       }),
     ).rejects.toThrow("plain error");
 
@@ -208,7 +220,9 @@ describe("infra/http/http-client - logging interceptors", () => {
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject(nonErrorWithMessage),
+        adapter: async () => {
+          throw nonErrorWithMessage;
+        },
       }),
     ).rejects.toThrow("object message");
 
@@ -221,10 +235,11 @@ describe("infra/http/http-client - logging interceptors", () => {
   it("converts primitive error to Error", async () => {
     (logger.warn as jest.Mock).mockClear();
     const client = createHttpClient({ baseURL: "https://example.com" });
+    const primitiveError = "primitive error" as unknown as Error;
 
     await expect(
       client.get("/err", {
-        adapter: async () => Promise.reject("primitive error"),
+        adapter: () => rejectAsError(primitiveError),
       }),
     ).rejects.toThrow("primitive error");
 

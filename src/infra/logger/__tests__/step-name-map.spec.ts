@@ -16,7 +16,7 @@ describe("resolveStepName", () => {
   });
 
   it("returns activity when endpoint is undefined", () => {
-    expect(resolveStepName("MY_ACTIVITY", undefined)).toBe("MY_ACTIVITY");
+    expect(resolveStepName("MY_ACTIVITY")).toBe("MY_ACTIVITY");
   });
 
   it("returns activity when no rules are configured", () => {

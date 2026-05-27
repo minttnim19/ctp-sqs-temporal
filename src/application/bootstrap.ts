@@ -6,7 +6,6 @@ import { sqsClient } from "@/infra/aws/sqs-client";
 import { SqsPoller } from "@/infra/aws/sqs-poller";
 import { startHealthServer } from "@/infra/healthcheck/health-server";
 import { logger } from "@/infra/logger/col-logger";
-import { checkTemporalHealth } from "@/infra/temporal/temporal-health";
 import { safelyParse, unwrapSnsEnvelope } from "@/utils/common";
 import {
   startTemporalWorkers,
@@ -97,13 +96,11 @@ export async function bootstrap() {
   });
 
   const healthServer = startHealthServer({
-    pollers,
     port: env.HEALTHCHECK_PORT,
     manualApi: {
       enabled: env.NODE_ENV === "development",
       resolveHandler,
     },
-    temporalHealth: checkTemporalHealth,
   });
 
   // Graceful shutdown

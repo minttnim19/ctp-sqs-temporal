@@ -24,7 +24,6 @@ jest.mock("@/infra/aws/sqs-poller");
 jest.mock("@/infra/healthcheck/health-server", () => ({
   startHealthServer: jest.fn(() => ({ close: jest.fn((cb: any) => cb()) })),
 }));
-jest.mock("@/infra/temporal/temporal-health", () => ({ checkTemporalHealth: jest.fn() }));
 jest.mock("@/infra/temporal/temporal-supervisor", () => ({
   startTemporalWorkers: jest.fn(() => new Map()),
   stopWorkers: jest.fn().mockResolvedValue(undefined),
