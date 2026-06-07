@@ -13,6 +13,7 @@ export enum LogCategory {
 }
 
 type BaseLogFields = {
+  channel: string;
   txid: string;
   step_txid: string;
   log_cat?: string;
@@ -70,6 +71,7 @@ type BaseParams = {
 
 type CreateLogModelParams = {
   txid?: string;
+  channel?: string;
   service_type?: string;
   product?: string;
   started_at?: number;
@@ -160,6 +162,7 @@ type ErrorLogValues = {
 };
 
 type LogPayloadBaseParams = {
+  channel: string;
   txid: string;
   log_cat: LogCategory;
   service_type: string;
@@ -173,8 +176,10 @@ type LogPayloadBaseParams = {
 type UnknownRecord = Record<string, unknown>;
 
 const timestamp = (): string => {
-  const now = new Date().toISOString();
-  return `,"time":"${now}","@timestamp":"${now}","timestamp":"${now}"`;
+  const date = new Date();
+  const now = date.toISOString();
+  const epochSeconds = date.getTime() / 1000;
+  return `,"time":${epochSeconds},"@timestamp":"${now}","timestamp":"${now}"`;
 };
 
 const setupLogger = (): pino.Logger => {
@@ -382,7 +387,7 @@ const getErrorLogValuesFromError = (
 };
 
 const getServiceType = (service_type: string, product: string): string =>
-  service_type ? `${product}_${service_type.trim()}` : product;
+  service_type ? service_type.trim() : product;
 
 const getElapsedTime = (started_at: number, override?: number): number =>
   started_at ? Date.now() - started_at : (override ?? 0);
@@ -397,6 +402,7 @@ const getResultDescText = (message: string | undefined, fallback: string): strin
   coalesceNonEmptyString(message, fallback);
 
 const buildLogPayloadBase = ({
+  channel,
   txid,
   log_cat,
   service_type,
@@ -406,6 +412,7 @@ const buildLogPayloadBase = ({
   result_code,
   source,
 }: LogPayloadBaseParams): Omit<LogData, "step_name"> => ({
+  channel,
   txid,
   step_txid: txid,
   log_cat,
@@ -433,6 +440,7 @@ export type LogModel = {
 
 export const createLogModel = ({
   txid: defaultTxid,
+  channel = env.LOG_CHANNEL,
   service_type = env.SERVICE_TYPE,
   product = env.LOG_PRODUCT,
   started_at = Date.now(),
@@ -452,6 +460,7 @@ export const createLogModel = ({
     const payload: StepLogData = {
       txid,
       step_txid: `${txid}_${Date.now()}`,
+      channel,
       log_cat: LogCategory.STEP,
       service_type: _service_type,
       start_date,
@@ -478,6 +487,7 @@ export const createLogModel = ({
     const payload: LogData = {
       ...buildLogPayloadBase({
         txid,
+        channel,
         log_cat,
         service_type: _service_type,
         start_date,
@@ -501,6 +511,7 @@ export const createLogModel = ({
     const payload: LogData = {
       ...buildLogPayloadBase({
         txid,
+        channel,
         log_cat,
         service_type: _service_type,
         start_date,
@@ -542,6 +553,7 @@ export const createLogModel = ({
     const payload: LogData = {
       ...buildLogPayloadBase({
         txid,
+        channel,
         log_cat,
         service_type: _service_type,
         start_date,
@@ -564,7 +576,7 @@ export const createLogModel = ({
   };
 
   const clone = (): LogModel =>
-    createLogModel({ txid: defaultTxid, service_type, product, started_at: Date.now() });
+    createLogModel({ txid: defaultTxid, channel, service_type, product, started_at: Date.now() });
 
   return { logIn, logStep: _logStep, logOut, logError, clone };
 };

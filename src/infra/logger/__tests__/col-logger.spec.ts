@@ -39,6 +39,7 @@ describe("col-logger", () => {
     const startedAt = new Date("2024-01-01T00:00:00.000Z").getTime();
     const model = createLogModel({
       txid: "tx-1",
+      channel: "ch-override",
       service_type: "svc",
       product: "prod",
       started_at: startedAt,
@@ -64,9 +65,10 @@ describe("col-logger", () => {
     expect(orderMsg).toBe("Create Order");
     expect(orderPayload).toMatchObject({
       txid: "tx-1",
+      channel: "ch-override",
       step_txid: "tx-1",
       log_cat: LogCategory.ORDER,
-      service_type: "prod_svc",
+      service_type: "svc",
       result_indicator: "INPROGRESS",
       result_code: "200",
       result_desc: "success",
@@ -85,6 +87,7 @@ describe("col-logger", () => {
     const [stepPayload] = mockLogger.info.mock.calls[1];
     expect(stepPayload).toMatchObject({
       txid: "tx-1",
+      channel: "ch-override",
       log_cat: LogCategory.STEP,
       result_indicator: "SUCCESS",
       result_code: "200",
@@ -289,6 +292,7 @@ describe("col-logger", () => {
   test("logOut uses fallback service_type, preserves string request, and kebab-cases activity", () => {
     const startedAt = new Date("1970-01-01T00:00:00.000Z").getTime();
     const model = createLogModel({
+      channel: "channel-x",
       service_type: "",
       product: "prod-x",
       started_at: startedAt,
@@ -318,6 +322,7 @@ describe("col-logger", () => {
     const [orderPayload] = mockLogger.info.mock.calls[1];
     expect(orderPayload).toMatchObject({
       txid: "uuid-123",
+      channel: "channel-x",
       log_cat: LogCategory.STEP,
       service_type: "prod-x",
       result_indicator: "COMPLETED",
@@ -524,7 +529,9 @@ describe("col-logger", () => {
       timestamp: () => string;
       formatters: { level: (label: string) => { level: string } };
     };
-    expect(baseConfig.timestamp()).toContain('"timestamp"');
+    expect(baseConfig.timestamp()).toBe(
+      ',"time":1704067210,"@timestamp":"2024-01-01T00:00:10.000Z","timestamp":"2024-01-01T00:00:10.000Z"',
+    );
     expect(baseConfig.formatters.level("info")).toEqual({ level: "INFO" });
     expect(pinoMock.mock.calls[0]).toHaveLength(2);
 

@@ -1,11 +1,12 @@
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { env } from "@/config/env";
-import * as prebookActivities from "@/temporal/activities/dummy.activities";
 import { logger } from "@/infra/logger/col-logger";
+import * as dummyActivities from "@/temporal/activities/dummy.activities";
+import * as scheduledActivities from "@/temporal/activities/scheduled.activities";
 import { activityLogInterceptor } from "@/temporal/interceptors/activity-log.interceptor";
 
-type WorkerRole = "all" | "dummy1" | "dummy2";
+type WorkerRole = "all" | "dummy1" | "dummy2" | "scheduled";
 
 function resolveRoleFromArgv(): WorkerRole | undefined {
   const args = process.argv.slice(2);
@@ -22,7 +23,7 @@ function resolveRoleFromArgv(): WorkerRole | undefined {
 }
 
 function isWorkerRole(value: string): value is WorkerRole {
-  return value === "all" || value === "dummy1" || value === "dummy2";
+  return value === "all" || value === "dummy1" || value === "dummy2" || value === "scheduled";
 }
 
 async function run(): Promise<void> {
@@ -50,6 +51,7 @@ async function run(): Promise<void> {
 
     const dummy1TaskQueue = env.TEMPORAL_TASK_QUEUE_DUMMY_1;
     const dummy2TaskQueue = env.TEMPORAL_TASK_QUEUE_DUMMY_2;
+    const scheduledTaskQueue = env.TEMPORAL_TASK_QUEUE_SCHEDULED;
 
     const argvRole = resolveRoleFromArgv();
     const envRole = env.TEMPORAL_WORKER_ROLE;
@@ -81,7 +83,8 @@ async function run(): Promise<void> {
           activity: [activityLogInterceptor],
         },
         activities: {
-          ...prebookActivities,
+          ...dummyActivities,
+          ...scheduledActivities,
         },
 
         // Add additional worker options
@@ -95,6 +98,10 @@ async function run(): Promise<void> {
 
     if (role === "all" || role === "dummy2") {
       workers.push(await createDummyWorker(dummy2TaskQueue));
+    }
+
+    if (role === "all" || role === "scheduled") {
+      workers.push(await createDummyWorker(scheduledTaskQueue));
     }
 
     let isShuttingDown = false;
@@ -145,6 +152,17 @@ async function run(): Promise<void> {
           taskQueue: dummy2TaskQueue,
         },
         "Temporal dummy2 worker started",
+      );
+    }
+
+    if (role === "all" || role === "scheduled") {
+      logger.info(
+        {
+          address: env.TEMPORAL_ADDRESS,
+          namespace: env.TEMPORAL_NAMESPACE,
+          taskQueue: scheduledTaskQueue,
+        },
+        "Temporal scheduled worker started",
       );
     }
 

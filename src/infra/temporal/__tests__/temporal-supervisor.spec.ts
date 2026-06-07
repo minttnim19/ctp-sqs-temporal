@@ -93,13 +93,16 @@ describe("temporal-supervisor", () => {
       });
 
       const processes = startTemporalWorkers(() => false);
-      expect(spawn).toHaveBeenCalledTimes(2);
-      expect(processes.size).toBe(2);
+      expect(spawn).toHaveBeenCalledTimes(3);
+      expect(processes.size).toBe(3);
       expect((spawn as jest.Mock).mock.calls[0][1]).toEqual(
         expect.arrayContaining(["--role", "dummy1"]),
       );
       expect((spawn as jest.Mock).mock.calls[1][1]).toEqual(
         expect.arrayContaining(["--role", "dummy2"]),
+      );
+      expect((spawn as jest.Mock).mock.calls[2][1]).toEqual(
+        expect.arrayContaining(["--role", "scheduled"]),
       );
     });
 
@@ -187,14 +190,14 @@ describe("temporal-supervisor", () => {
 
       children[0].emit("close", 1, null);
       jest.advanceTimersByTime(1000);
-      children[2].emit("spawn");
-      children[2].emit("close", 1, null);
+      children[3].emit("spawn");
+      children[3].emit("close", 1, null);
 
       jest.advanceTimersByTime(999);
-      expect((spawn as jest.Mock).mock.calls).toHaveLength(3);
+      expect((spawn as jest.Mock).mock.calls).toHaveLength(4);
 
       jest.advanceTimersByTime(1);
-      expect((spawn as jest.Mock).mock.calls).toHaveLength(4);
+      expect((spawn as jest.Mock).mock.calls).toHaveLength(5);
 
       shuttingDown = true;
     });

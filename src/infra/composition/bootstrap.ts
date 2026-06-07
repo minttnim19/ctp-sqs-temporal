@@ -2,22 +2,27 @@ import type { ChildProcess } from "node:child_process";
 
 import { env, resolveQueueNames } from "@/config/env";
 import { ensureQueues, getQueueUrl } from "@/infra/aws/queue-setup";
+import { resolveQueueHandler } from "@/infra/aws/queue-routing";
 import { sqsClient } from "@/infra/aws/sqs-client";
+import { mapSqsMessage } from "@/infra/aws/sqs-message-mapper";
 import { SqsPoller } from "@/infra/aws/sqs-poller";
+import { createComposition } from "@/infra/composition/composition-root";
 import { startHealthServer } from "@/infra/healthcheck/health-server";
 import { logger } from "@/infra/logger/col-logger";
-import { safelyParse, unwrapSnsEnvelope } from "@/utils/common";
 import {
   startTemporalWorkers,
   stopWorkers,
   type WorkerRole,
 } from "@/infra/temporal/temporal-supervisor";
-import { resolveHandler, type AllowEventMessage } from "@/application/handler-resolver";
 
 export async function bootstrap() {
   let workerProcesses: Map<WorkerRole, ChildProcess> = new Map();
   let isShuttingDown = false;
   let isRestartingWorkers = false;
+
+  const composition = createComposition();
+  const resolveHandler = (queueName: string) =>
+    resolveQueueHandler(queueName, env.APP_ENV, composition.queueHandlers);
 
   const isLocal = env.NODE_ENV !== "production" && Boolean(env.SQS_ENDPOINT);
   const allowAutoCreateQueues = env.AUTO_CREATE_QUEUES && isLocal;
@@ -48,16 +53,8 @@ export async function bootstrap() {
       sqsClient,
       queueUrl,
       async (raw) => {
-        const bodyText = raw.Body;
-        const unwrapped = unwrapSnsEnvelope(bodyText);
-        const body = safelyParse<AllowEventMessage>(unwrapped);
-
-        await useCase.handle(body, {
-          messageId: raw.MessageId ?? "",
-          receiptHandle: raw.ReceiptHandle ?? "",
-          attributes: raw.Attributes ?? {},
-          messageAttributes: raw.MessageAttributes ?? {},
-        });
+        const inbound = mapSqsMessage<unknown>(raw);
+        await useCase.handle(inbound.payload, inbound.metadata);
       },
       {
         batchSize: env.SQS_BATCH_SIZE,
@@ -70,10 +67,8 @@ export async function bootstrap() {
     pollers.push(poller);
   }
 
-  // Temporal workers (supervised child processes)
   workerProcesses = startTemporalWorkers(() => isShuttingDown);
 
-  // Manual restart signal for Temporal workers (single pod/container constraints)
   process.on("SIGUSR2", () => {
     if (isShuttingDown) return;
     if (!env.SPAWN_TEMPORAL_WORKER) {
@@ -103,7 +98,6 @@ export async function bootstrap() {
     },
   });
 
-  // Graceful shutdown
   const shutdown = (signal: string) => async () => {
     if (isShuttingDown) return;
     isShuttingDown = true;

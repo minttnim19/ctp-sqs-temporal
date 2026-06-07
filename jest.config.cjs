@@ -17,6 +17,7 @@ module.exports = {
     "!src/**/__tests__/**",
     "!src/main.ts",
     "!src/application/bootstrap.ts",
+    "!src/temporal/workflows/index.ts",
   ],
   coveragePathIgnorePatterns: ["/node_modules/"],
   coverageReporters: ["text", "lcov", "html"],

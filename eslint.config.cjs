@@ -45,6 +45,47 @@ module.exports = [
       ],
     },
   },
+  {
+    files: ["src/application/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/infra/**", "@/config/**", "@aws-sdk/**", "@temporalio/**", "axios", "pino"],
+            },
+            {
+              group: ["@commercetools/**"],
+              allowTypeImports: true,
+              message:
+                "Commercetools SDK is allowed in application only as a type-only inbound message contract.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/domain/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            "@/application/**",
+            "@/infra/**",
+            "@/config/**",
+            "@aws-sdk/**",
+            "@temporalio/**",
+            "@commercetools/**",
+            "axios",
+            "pino",
+          ],
+        },
+      ],
+    },
+  },
   // Relax certain rules for test files
   {
     files: ["**/*.spec.ts", "**/__tests__/**/*.ts"],

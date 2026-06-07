@@ -1,4 +1,4 @@
-import { bootstrap } from "@/application/bootstrap";
+import { bootstrap } from "@/infra/composition/bootstrap";
 import { logger } from "@/infra/logger/col-logger";
 
 bootstrap().catch((err) => {

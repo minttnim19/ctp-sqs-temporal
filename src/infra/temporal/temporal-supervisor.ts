@@ -5,9 +5,9 @@ import path from "node:path";
 import { env } from "@/config/env";
 import { logger } from "@/infra/logger/col-logger";
 
-export type WorkerRole = "dummy1" | "dummy2";
+export type WorkerRole = "dummy1" | "dummy2" | "scheduled";
 
-const WORKER_ROLES: WorkerRole[] = ["dummy1", "dummy2"];
+const WORKER_ROLES: WorkerRole[] = ["dummy1", "dummy2", "scheduled"];
 
 export function startTemporalWorkers(isShuttingDown: () => boolean): Map<WorkerRole, ChildProcess> {
   if (!env.SPAWN_TEMPORAL_WORKER) {

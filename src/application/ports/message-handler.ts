@@ -1,11 +1,6 @@
-import { MessageAttributeValue, MessageSystemAttributeName } from "@aws-sdk/client-sqs";
+import type { MessageMetadata } from "@/application/models/inbound-message";
 
-export type MessageMeta = {
-  messageId: string;
-  receiptHandle: string;
-  attributes?: Partial<Record<MessageSystemAttributeName, string>>;
-  messageAttributes?: Record<string, MessageAttributeValue>;
-};
+export type MessageMeta = MessageMetadata;
 
 export interface MessageHandler<T> {
   handle(message: T, meta: MessageMeta): Promise<void>;

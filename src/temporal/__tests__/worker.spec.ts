@@ -3,6 +3,7 @@ jest.mock("@/infra/logger/col-logger", () => ({
 }));
 
 jest.mock("@/temporal/activities/dummy.activities", () => ({}));
+jest.mock("@/temporal/activities/scheduled.activities", () => ({}));
 jest.mock("@/temporal/interceptors/activity-log.interceptor", () => ({
   activityLogInterceptor: {},
 }));
@@ -19,6 +20,7 @@ describe("temporal/worker", () => {
     TEMPORAL_NAMESPACE: "default",
     TEMPORAL_TASK_QUEUE_DUMMY_1: "q-dummy-1",
     TEMPORAL_TASK_QUEUE_DUMMY_2: "q-dummy-2",
+    TEMPORAL_TASK_QUEUE_SCHEDULED: "q-scheduled",
     TEMPORAL_MAX_ACTIVITY_TASKS: 5,
     TEMPORAL_MAX_WORKFLOW_TASKS: 5,
     TEMPORAL_WORKER_ROLE: "all",
@@ -36,7 +38,7 @@ describe("temporal/worker", () => {
     process.removeAllListeners("unhandledRejection");
   });
 
-  it("starts dummy1 and dummy2 workers for all role", async () => {
+  it("starts dummy1, dummy2, and scheduled workers for all role", async () => {
     await jest.isolateModulesAsync(async () => {
       const connection = { close: jest.fn() };
       const connectMock = jest.fn(async () => connection);
@@ -57,7 +59,7 @@ describe("temporal/worker", () => {
       await flush();
 
       expect(connectMock).toHaveBeenCalledTimes(1);
-      expect(createMock).toHaveBeenCalledTimes(2);
+      expect(createMock).toHaveBeenCalledTimes(3);
       const createCall = (createMock.mock.calls as any[])[0][0];
       expect(createCall).toMatchObject({
         connection,
@@ -67,7 +69,8 @@ describe("temporal/worker", () => {
         maxConcurrentWorkflowTaskExecutions: 5,
       });
       expect((createMock.mock.calls as any[])[1][0].taskQueue).toBe("q-dummy-2");
-      expect(runMock).toHaveBeenCalledTimes(2);
+      expect((createMock.mock.calls as any[])[2][0].taskQueue).toBe("q-scheduled");
+      expect(runMock).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -121,6 +124,33 @@ describe("temporal/worker", () => {
 
       expect(createMock).toHaveBeenCalledTimes(1);
       expect((createMock.mock.calls as any[])[0][0].taskQueue).toBe("q-dummy-2");
+      process.argv = originalArgv;
+    });
+  });
+
+  it("starts scheduled worker for scheduled role from argv", async () => {
+    await jest.isolateModulesAsync(async () => {
+      const originalArgv = process.argv;
+      process.argv = ["node", "worker.js", "--role=scheduled"];
+      const createMock = jest.fn(async () => ({
+        run: jest.fn(async () => undefined),
+        shutdown: jest.fn(async () => undefined),
+      }));
+
+      jest.doMock("@temporalio/worker", () => ({
+        NativeConnection: { connect: jest.fn(async () => ({ close: jest.fn() })) },
+        Worker: { create: createMock },
+      }));
+
+      jest.doMock("@/config/env", () => ({
+        env: { ...baseEnv, TEMPORAL_WORKER_ROLE: undefined },
+      }));
+
+      await import("@/temporal/worker");
+      await flush();
+
+      expect(createMock).toHaveBeenCalledTimes(1);
+      expect((createMock.mock.calls as any[])[0][0].taskQueue).toBe("q-scheduled");
       process.argv = originalArgv;
     });
   });
@@ -182,7 +212,7 @@ describe("temporal/worker", () => {
         expect.objectContaining({ role: "unknown" }),
         "Invalid worker role from env; using default 'all'",
       );
-      expect(createMock).toHaveBeenCalledTimes(2);
+      expect(createMock).toHaveBeenCalledTimes(3);
       process.argv = originalArgv;
     });
   });
