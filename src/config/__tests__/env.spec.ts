@@ -1,34 +1,34 @@
-import { normalizeBoolFromEnv, normalizeCsvEnv, resolveQueueNames } from "@/config/env";
+import { getQueueNames, normalizeBoolFromEnv, normalizeCsvEnv } from "@/config/env";
 
 describe("config/env", () => {
-  describe("resolveQueueNames", () => {
+  describe("getQueueNames", () => {
     it("splits a comma-separated string into an array", () => {
-      expect(resolveQueueNames({ SQS_QUEUE_NAMES: "q1,q2,q3" } as any)).toEqual(["q1", "q2", "q3"]);
+      expect(getQueueNames({ SQS_QUEUE_NAMES: "q1,q2,q3" } as any)).toEqual(["q1", "q2", "q3"]);
     });
 
     it("trims whitespace from each queue name", () => {
-      expect(resolveQueueNames({ SQS_QUEUE_NAMES: " q1 , q2 " } as any)).toEqual(["q1", "q2"]);
+      expect(getQueueNames({ SQS_QUEUE_NAMES: " q1 , q2 " } as any)).toEqual(["q1", "q2"]);
     });
 
     it("returns empty array for empty string", () => {
-      expect(resolveQueueNames({ SQS_QUEUE_NAMES: "" } as any)).toEqual([]);
+      expect(getQueueNames({ SQS_QUEUE_NAMES: "" } as any)).toEqual([]);
     });
 
     it("returns empty array for whitespace-only string", () => {
-      expect(resolveQueueNames({ SQS_QUEUE_NAMES: "   " } as any)).toEqual([]);
+      expect(getQueueNames({ SQS_QUEUE_NAMES: "   " } as any)).toEqual([]);
     });
 
     it("returns empty array when SQS_QUEUE_NAMES is undefined", () => {
-      expect(resolveQueueNames({} as any)).toEqual([]);
+      expect(getQueueNames({} as any)).toEqual([]);
     });
 
     it("filters out empty segments from double commas", () => {
-      expect(resolveQueueNames({ SQS_QUEUE_NAMES: "q1,,q2" } as any)).toEqual(["q1", "q2"]);
+      expect(getQueueNames({ SQS_QUEUE_NAMES: "q1,,q2" } as any)).toEqual(["q1", "q2"]);
     });
 
     it("uses env default when called with no argument", () => {
       // Calling with no argument exercises the default parameter branch (envObj = env)
-      const result = resolveQueueNames();
+      const result = getQueueNames();
       expect(Array.isArray(result)).toBe(true);
     });
   });

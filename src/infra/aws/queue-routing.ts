@@ -16,7 +16,7 @@ export function registerQueueHandler<TMessage>(
   };
 }
 
-export function resolveQueueHandler(
+export function getQueueHandler(
   queueName: string,
   appEnv: string,
   registry: QueueHandlerRegistry,

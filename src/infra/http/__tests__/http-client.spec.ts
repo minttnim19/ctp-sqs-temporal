@@ -1,8 +1,11 @@
 // Mock logger to keep output clean
+const mockLogStep = jest.fn();
+const mockCreateLogModel = jest.fn(() => ({ logStep: mockLogStep }));
+
 jest.mock("@/infra/logger/col-logger", () => ({
+  createLogModel: mockCreateLogModel,
   logger: {
     warn: jest.fn(),
-    error: jest.fn(),
   },
 }));
 
@@ -15,12 +18,18 @@ import {
   httpPost,
   httpPut,
   httpDelete,
+  type HttpRequestConfig,
 } from "@/infra/http/http-client";
-import { logger } from "@/infra/logger/col-logger";
+import { createLogModel, logger } from "@/infra/logger/col-logger";
 
 const rejectAsError = (reason: Error): Promise<never> => Promise.reject(reason);
 
 describe("infra/http/http-client - interceptors", () => {
+  beforeEach(() => {
+    mockLogStep.mockClear();
+    mockCreateLogModel.mockClear();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -36,7 +45,7 @@ describe("infra/http/http-client - interceptors", () => {
     const client = createHttpClient();
     const res = await client.get("https://example.com/ok", {
       adapter: async (config) => ({
-        data: { hasMeta: Boolean((config as any).metadata?.start) },
+        data: { hasMeta: Boolean((config as any).metadata) },
         status: 200,
         statusText: "OK",
         headers: {},
@@ -83,6 +92,7 @@ describe("infra/http/http-client - wrappers", () => {
       baseURL: "https://example.com",
       timeoutMs: 1234,
       headers: { "X-Test": "1" },
+      rejectUnauthorized: false,
     });
 
     expect(createSpy).toHaveBeenCalledWith(
@@ -96,102 +106,136 @@ describe("infra/http/http-client - wrappers", () => {
         }),
       }),
     );
+    const createArg = createSpy.mock.calls[createSpy.mock.calls.length - 1]?.[0] as any;
+    expect(createArg.httpsAgent.options.rejectUnauthorized).toBe(false);
   });
 });
 
 describe("infra/http/http-client - logging interceptors", () => {
-  it("logs error on axios error", async () => {
+  beforeEach(() => {
+    mockLogStep.mockClear();
+    mockCreateLogModel.mockClear();
+  });
+
+  it("logs successful response when txid metadata is provided", async () => {
+    const client = createHttpClient({ baseURL: "https://example.com" });
+    const config: HttpRequestConfig = {
+      metadata: { txid: "tx-http" },
+      adapter: async (requestConfig) => ({
+        data: { ok: true },
+        status: 201,
+        statusText: "Created",
+        headers: {},
+        config: requestConfig,
+      }),
+    };
+
+    await expect(client.post("/ok", { request: true }, config)).resolves.toMatchObject({
+      data: { ok: true },
+    });
+
+    expect(createLogModel).toHaveBeenCalledWith({ txid: "tx-http" });
+    expect(mockLogStep).toHaveBeenCalledWith("HTTP client request completed", {
+      activity_name: "http-client-request",
+      endpoint: "https://example.com/ok",
+      method: "POST",
+      step_request: { request: true },
+      step_response: { ok: true },
+      result_code: "201",
+    });
+  });
+
+  it("creates log model with undefined txid when txid metadata is missing", async () => {
+    const client = createHttpClient({ baseURL: "https://example.com" });
+
+    await client.get("/ok", {
+      adapter: async (config) => ({
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      }),
+    });
+
+    expect(createLogModel).toHaveBeenCalledWith({ txid: undefined });
+    expect(mockLogStep).toHaveBeenCalledWith("HTTP client request completed", {
+      activity_name: "http-client-request",
+      endpoint: "https://example.com/ok",
+      method: "GET",
+      step_request: undefined,
+      step_response: { ok: true },
+      result_code: "200",
+    });
+  });
+
+  it("uses baseURL as endpoint when request url is missing", async () => {
+    const client = createHttpClient({ baseURL: "https://example.com" });
+
+    await client.request({
+      adapter: async (config) => ({
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      }),
+    });
+
+    expect(mockLogStep).toHaveBeenCalledWith("HTTP client request completed", {
+      activity_name: "http-client-request",
+      endpoint: "https://example.com",
+      method: "GET",
+      step_request: undefined,
+      step_response: { ok: true },
+      result_code: "200",
+    });
+  });
+
+  it("uses empty endpoint when request config has no url", async () => {
+    const client = createHttpClient();
+
+    await client.request({
+      method: undefined,
+      adapter: async (config) => ({
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      }),
+    });
+
+    expect(mockLogStep).toHaveBeenCalledWith("HTTP client request completed", {
+      activity_name: "http-client-request",
+      endpoint: "",
+      method: "GET",
+      step_request: undefined,
+      step_response: { ok: true },
+      result_code: "200",
+    });
+  });
+
+  it("logs axios error with request metadata when txid is provided", async () => {
     const client = createHttpClient({ baseURL: "https://example.com" });
     const axiosLikeError: any = new Error("boom");
     axiosLikeError.isAxiosError = true;
-    axiosLikeError.config = { url: "/err" };
-    axiosLikeError.response = { status: 503 };
+    axiosLikeError.response = { status: 503, data: { message: "downstream failed" } };
+    const config: HttpRequestConfig = {
+      metadata: { txid: "tx-http-error" },
+      adapter: async (requestConfig) => {
+        axiosLikeError.config = requestConfig;
+        throw axiosLikeError;
+      },
+    };
 
-    await expect(
-      client.get("/err", {
-        adapter: async () => {
-          throw axiosLikeError;
-        },
-      }),
-    ).rejects.toThrow("boom");
+    await expect(client.get("/err", config)).rejects.toThrow("boom");
 
-    const errorCall = (logger.error as jest.Mock).mock.calls.find(
-      (c) => c[1] === "HTTP request failed",
-    );
-    expect(errorCall?.[0]).toMatchObject({
-      message: "boom",
-      url: "/err",
-      status: 503,
+    expect(createLogModel).toHaveBeenCalledWith({ txid: "tx-http-error" });
+    expect(mockLogStep).toHaveBeenCalledWith("HTTP client request error", {
+      activity_name: "http-client-request",
+      error: axiosLikeError,
     });
-  });
-
-  it("logs error with undefined ms when metadata start missing", async () => {
-    (logger.error as jest.Mock).mockClear();
-    const client = createHttpClient({ baseURL: "https://example.com" });
-    const axiosLikeError: any = new Error("oops");
-    axiosLikeError.isAxiosError = true;
-    axiosLikeError.config = { url: "/err", metadata: {} };
-    axiosLikeError.response = { status: 500 };
-
-    await expect(
-      client.get("/err", {
-        adapter: async () => {
-          throw axiosLikeError;
-        },
-      }),
-    ).rejects.toThrow("oops");
-
-    const errorCall = (logger.error as jest.Mock).mock.calls.find(
-      (c) => c[1] === "HTTP request failed",
-    );
-    expect(errorCall?.[0]).toMatchObject({ url: "/err", status: 500, ms: undefined });
-  });
-
-  it("logs error with minimal data when axios error config is undefined", async () => {
-    (logger.error as jest.Mock).mockClear();
-    const client = createHttpClient({ baseURL: "https://example.com" });
-    const axiosLikeError: any = new Error("cfg missing");
-    axiosLikeError.isAxiosError = true;
-    delete axiosLikeError.config;
-    await expect(
-      client.get("/err", {
-        adapter: async () => {
-          throw axiosLikeError;
-        },
-      }),
-    ).rejects.toThrow("cfg missing");
-    const errorCall = (logger.error as jest.Mock).mock.calls.find(
-      (c) => c[1] === "HTTP request failed",
-    );
-    expect(errorCall?.[0]).toMatchObject({
-      message: "cfg missing",
-      url: undefined,
-      status: undefined,
-    });
-  });
-
-  it("logs error with computed ms when metadata start exists", async () => {
-    (logger.error as jest.Mock).mockClear();
-    const client = createHttpClient({ baseURL: "https://example.com" });
-    const axiosLikeError: any = new Error("timed");
-    axiosLikeError.isAxiosError = true;
-    axiosLikeError.config = { url: "/err", metadata: { start: Date.now() - 5 } };
-    axiosLikeError.response = { status: 404 };
-
-    await expect(
-      client.get("/err", {
-        adapter: async () => {
-          throw axiosLikeError;
-        },
-      }),
-    ).rejects.toThrow("timed");
-
-    const errorCall = (logger.error as jest.Mock).mock.calls.find(
-      (c) => c[1] === "HTTP request failed",
-    );
-    expect(errorCall?.[0]).toMatchObject({ url: "/err", status: 404 });
-    expect(typeof errorCall?.[0]?.ms).toBe("number");
-    expect(errorCall?.[0]?.ms).toBeGreaterThanOrEqual(0);
   });
 
   it("logs warn on non-axios error", async () => {
@@ -247,5 +291,41 @@ describe("infra/http/http-client - logging interceptors", () => {
       (c) => c[1] === "Unknown HTTP error",
     );
     expect(warnCall?.[0]).toMatchObject({ error: "primitive error" });
+  });
+
+  it("defaults metadata method to GET when axios config has no method", async () => {
+    await jest.isolateModulesAsync(async () => {
+      let requestInterceptor: ((config: any) => any) | undefined;
+      const createMock = jest.fn(() => ({
+        interceptors: {
+          request: {
+            use: jest.fn((handler) => {
+              requestInterceptor = handler;
+            }),
+          },
+          response: { use: jest.fn() },
+        },
+      }));
+
+      jest.doMock("axios", () => ({
+        __esModule: true,
+        default: { create: createMock },
+        isAxiosError: jest.fn(),
+      }));
+
+      const { createHttpClient: createIsolatedHttpClient } =
+        await import("@/infra/http/http-client");
+      createIsolatedHttpClient();
+
+      const config = requestInterceptor?.({
+        baseURL: "https://example.com",
+        url: "/default-method",
+      });
+
+      expect(config.metadata).toMatchObject({
+        method: "GET",
+        endpoint: "https://example.com/default-method",
+      });
+    });
   });
 });

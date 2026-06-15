@@ -8,7 +8,7 @@ import { activityLogInterceptor } from "@/temporal/interceptors/activity-log.int
 
 type WorkerRole = "all" | "dummy1" | "dummy2" | "scheduled";
 
-function resolveRoleFromArgv(): WorkerRole | undefined {
+function getRoleFromArgv(): WorkerRole | undefined {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
     const current = args[i];
@@ -53,7 +53,7 @@ async function run(): Promise<void> {
     const dummy2TaskQueue = env.TEMPORAL_TASK_QUEUE_DUMMY_2;
     const scheduledTaskQueue = env.TEMPORAL_TASK_QUEUE_SCHEDULED;
 
-    const argvRole = resolveRoleFromArgv();
+    const argvRole = getRoleFromArgv();
     const envRole = env.TEMPORAL_WORKER_ROLE;
     let role: WorkerRole = "all";
 

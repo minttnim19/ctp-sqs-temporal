@@ -2,12 +2,14 @@ import { createServer, IncomingMessage, Server, ServerResponse } from "node:http
 
 import { logger } from "@/infra/logger/col-logger";
 import type { MessageHandler } from "@/application/ports/message-handler";
+import type { MessageAttribute } from "@/application/models/inbound-message";
+import { getStringField, isPlainObject } from "@/utils/object";
 
 type HealthServerOptions = {
   port: number;
   manualApi?: {
     enabled: boolean;
-    resolveHandler: (queueName: string) => MessageHandler<unknown> | undefined;
+    getHandler: (queueName: string) => MessageHandler<unknown> | undefined;
   };
 };
 type HealthHandlerOptions = Omit<HealthServerOptions, "port">;
@@ -105,7 +107,16 @@ async function handleManualApi(
     }
   }
 
-  const handler = manualApi.resolveHandler(queueName);
+  let messageAttributes: Record<string, MessageAttribute> | undefined;
+  if (body.messageAttributes !== undefined) {
+    if (!isPlainObject(body.messageAttributes)) {
+      sendJson(res, 400, { error: "messageAttributes must be an object" });
+      return;
+    }
+    messageAttributes = toMessageAttributes(body.messageAttributes);
+  }
+
+  const handler = manualApi.getHandler(queueName);
   if (!handler) {
     sendJson(res, 404, { error: "handler_not_found" });
     return;
@@ -116,12 +127,37 @@ async function handleManualApi(
       messageId: `manual-${Date.now()}`,
       receiptHandle: "",
       attributes,
+      messageAttributes,
     });
     sendJson(res, 200, { status: "ok" });
   } catch (err) {
     logger.error({ err, queueName }, "Manual API handle failed");
     sendJson(res, 500, { error: "handle_failed" });
   }
+}
+
+function toMessageAttributes(source: Record<string, unknown>): Record<string, MessageAttribute> {
+  return Object.fromEntries(
+    Object.entries(source).map(([key, value]) => {
+      if (isPlainObject(value)) {
+        return [
+          key,
+          {
+            DataType: getStringField(value, "DataType") ?? "String",
+            StringValue: getStringField(value, "StringValue") ?? "",
+          },
+        ];
+      }
+
+      return [
+        key,
+        {
+          DataType: "String",
+          StringValue: typeof value === "string" ? value : JSON.stringify(value),
+        },
+      ];
+    }),
+  );
 }
 
 async function readJsonBody(
@@ -170,8 +206,4 @@ function sendText(
 ) {
   res.writeHead(status, { "Content-Type": "text/plain", ...headers });
   res.end(payload);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

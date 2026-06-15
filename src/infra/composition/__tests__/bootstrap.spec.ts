@@ -16,7 +16,7 @@ jest.mock("@/config/env", () => ({
     LOG_PRODUCT: "xyz",
     SERVICE_TYPE: "svc",
   },
-  resolveQueueNames: jest.fn(() => ["q1"]),
+  getQueueNames: jest.fn(() => ["q1"]),
 }));
 
 jest.mock("@/infra/aws/queue-setup");
@@ -41,20 +41,20 @@ jest.mock("@/infra/composition/composition-root", () => ({
 }));
 
 describe("Bootstrap", () => {
-  const { resolveQueueUrl, closeHealthServer } = jest.requireActual(
+  const { getQueueUrlForName, closeHealthServer } = jest.requireActual(
     "@/infra/composition/bootstrap",
   );
 
-  describe("resolveQueueUrl", () => {
+  describe("getQueueUrlForName", () => {
     it("should call ensureQueues when allowAutoCreateQueues is true", async () => {
       (ensureQueues as jest.Mock).mockResolvedValue({ mainUrl: "main-url" });
-      const url = await resolveQueueUrl("q", true, "-dlq");
+      const url = await getQueueUrlForName("q", true, "-dlq");
       expect(url).toBe("main-url");
     });
 
     it("should call getQueueUrl when allowAutoCreateQueues is false", async () => {
       (getQueueUrl as jest.Mock).mockResolvedValue("existing-url");
-      const url = await resolveQueueUrl("q", false, "-dlq");
+      const url = await getQueueUrlForName("q", false, "-dlq");
       expect(url).toBe("existing-url");
     });
   });
@@ -148,11 +148,11 @@ describe("bootstrap runtime", () => {
 
     jest.doMock("@/config/env", () => ({
       env,
-      resolveQueueNames: jest.fn(() => queueNames),
+      getQueueNames: jest.fn(() => queueNames),
     }));
     jest.doMock("@/infra/aws/queue-setup", () => ({ ensureQueues, getQueueUrl }));
     jest.doMock("@/infra/aws/queue-routing", () => ({
-      resolveQueueHandler: jest.fn((queueName: string) => queueHandlers[queueName]),
+      getQueueHandler: jest.fn((queueName: string) => queueHandlers[queueName]),
     }));
     jest.doMock("@/infra/aws/sqs-client", () => ({ sqsClient: { name: "sqs" } }));
     jest.doMock("@/infra/aws/sqs-message-mapper", () => ({ mapSqsMessage }));
@@ -214,7 +214,7 @@ describe("bootstrap runtime", () => {
         port: 3000,
         manualApi: {
           enabled: true,
-          resolveHandler: expect.any(Function),
+          getHandler: expect.any(Function),
         },
       });
     });

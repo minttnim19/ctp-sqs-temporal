@@ -1,21 +1,21 @@
-import { registerQueueHandler, resolveQueueHandler } from "@/infra/aws/queue-routing";
+import { getQueueHandler, registerQueueHandler } from "@/infra/aws/queue-routing";
 
 describe("queue-routing", () => {
   const dummyHandler = { handle: jest.fn() };
   const registry = { dummy: dummyHandler };
 
   it("resolves handler for base queue name", () => {
-    expect(resolveQueueHandler("dummy", "dev", registry)).toBe(dummyHandler);
+    expect(getQueueHandler("dummy", "dev", registry)).toBe(dummyHandler);
   });
 
   it("resolves handler with environment segment in queue name", () => {
-    expect(resolveQueueHandler("dev-dummy", "dev", registry)).toBe(dummyHandler);
+    expect(getQueueHandler("dev-dummy", "dev", registry)).toBe(dummyHandler);
   });
 
   it("resolves scheduled handlers with environment segment in queue name", () => {
     const scheduledHandler = { handle: jest.fn() };
     expect(
-      resolveQueueHandler("dev-scheduled-dummy", "dev", {
+      getQueueHandler("dev-scheduled-dummy", "dev", {
         ...registry,
         "scheduled-dummy": scheduledHandler,
       }),
@@ -23,15 +23,15 @@ describe("queue-routing", () => {
   });
 
   it("ignores suffix after dot in queue name", () => {
-    expect(resolveQueueHandler("dummy.fifo", "dev", registry)).toBe(dummyHandler);
+    expect(getQueueHandler("dummy.fifo", "dev", registry)).toBe(dummyHandler);
   });
 
   it("returns undefined for unknown queue name", () => {
-    expect(resolveQueueHandler("unknown-queue", "dev", registry)).toBeUndefined();
+    expect(getQueueHandler("unknown-queue", "dev", registry)).toBeUndefined();
   });
 
   it("handles empty queue name", () => {
-    expect(resolveQueueHandler("", "dev", registry)).toBeUndefined();
+    expect(getQueueHandler("", "dev", registry)).toBeUndefined();
   });
 
   it("registers a handler with payload mapping", async () => {

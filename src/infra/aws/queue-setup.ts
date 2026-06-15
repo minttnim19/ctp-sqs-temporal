@@ -7,14 +7,14 @@ import {
 
 import { logger } from "@/infra/logger/col-logger";
 
-async function resolveQueueUrl(client: SQSClient, queueName: string): Promise<string> {
+async function fetchQueueUrl(client: SQSClient, queueName: string): Promise<string> {
   const res = await client.send(new GetQueueUrlCommand({ QueueName: queueName }));
   const url = res.QueueUrl;
   if (!url) throw new Error(`SQS queue URL not found for ${queueName}`);
   return url;
 }
 
-async function resolveQueueArn(client: SQSClient, queueUrl: string): Promise<string> {
+async function getQueueArn(client: SQSClient, queueUrl: string): Promise<string> {
   const res = await client.send(
     new GetQueueAttributesCommand({ QueueUrl: queueUrl, AttributeNames: ["QueueArn"] }),
   );
@@ -25,8 +25,8 @@ async function resolveQueueArn(client: SQSClient, queueUrl: string): Promise<str
 
 export async function ensureQueues(client: SQSClient, queueName: string, dlqName: string) {
   await client.send(new CreateQueueCommand({ QueueName: dlqName }));
-  const dlqUrl = await resolveQueueUrl(client, dlqName);
-  const dlqArn = await resolveQueueArn(client, dlqUrl);
+  const dlqUrl = await fetchQueueUrl(client, dlqName);
+  const dlqArn = await getQueueArn(client, dlqUrl);
 
   await client.send(
     new CreateQueueCommand({
@@ -42,14 +42,14 @@ export async function ensureQueues(client: SQSClient, queueName: string, dlqName
     }),
   );
 
-  const mainUrl = await resolveQueueUrl(client, queueName);
+  const mainUrl = await fetchQueueUrl(client, queueName);
 
   logger.info({ mainUrl, dlqUrl }, "Queues ensured");
   return { mainUrl, dlqUrl };
 }
 
 export async function getQueueUrl(client: SQSClient, queueName: string) {
-  const queueUrl = await resolveQueueUrl(client, queueName);
+  const queueUrl = await fetchQueueUrl(client, queueName);
   logger.info({ queueName, queueUrl }, "Queue URL resolved");
   return queueUrl;
 }

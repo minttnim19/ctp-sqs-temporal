@@ -127,7 +127,7 @@ describe("createHealthHandler", () => {
 
     it("returns 403 when manualApi.enabled is false", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: false, resolveHandler: () => undefined },
+        manualApi: { enabled: false, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -139,7 +139,7 @@ describe("createHealthHandler", () => {
 
     it("returns 405 for GET /api/manual when enabled", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, { method: "GET", url: "/api/manual" });
       expect(res.status).toBe(405);
@@ -149,7 +149,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when body is empty", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -162,7 +162,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 for invalid JSON body", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -175,7 +175,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when queueName is missing", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -188,7 +188,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when queueName is not a string", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -200,7 +200,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when message is missing", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -213,7 +213,7 @@ describe("createHealthHandler", () => {
 
     it("returns 400 when attributes is not a plain object", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -224,9 +224,22 @@ describe("createHealthHandler", () => {
       expect(res.body).toMatchObject({ error: "attributes must be an object" });
     });
 
+    it("returns 400 when messageAttributes is not a plain object", async () => {
+      const handler = createHealthHandler({
+        manualApi: { enabled: true, getHandler: () => undefined },
+      });
+      const res = await invokeHandler(handler, {
+        method: "POST",
+        url: "/api/manual",
+        body: { queueName: "my-queue", message: {}, messageAttributes: ["not", "an", "object"] },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ error: "messageAttributes must be an object" });
+    });
+
     it("returns 404 when no handler found for queueName", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const res = await invokeHandler(handler, {
         method: "POST",
@@ -242,7 +255,7 @@ describe("createHealthHandler", () => {
       const handler = createHealthHandler({
         manualApi: {
           enabled: true,
-          resolveHandler: () => ({ handle: mockHandle }),
+          getHandler: () => ({ handle: mockHandle }),
         },
       });
 
@@ -268,7 +281,7 @@ describe("createHealthHandler", () => {
       const handler = createHealthHandler({
         manualApi: {
           enabled: true,
-          resolveHandler: () => ({ handle: mockHandle }),
+          getHandler: () => ({ handle: mockHandle }),
         },
       });
 
@@ -285,12 +298,80 @@ describe("createHealthHandler", () => {
       );
     });
 
+    it("returns 200 with messageAttributes normalized to SQS-like values", async () => {
+      const mockHandle = jest.fn().mockResolvedValue(undefined);
+      const handler = createHealthHandler({
+        manualApi: {
+          enabled: true,
+          getHandler: () => ({ handle: mockHandle }),
+        },
+      });
+
+      const res = await invokeHandler(handler, {
+        method: "POST",
+        url: "/api/manual",
+        body: {
+          queueName: "q",
+          message: {},
+          messageAttributes: {
+            journey: "demo-journey",
+            correlatorId: { DataType: "String", StringValue: "tx-1" },
+          },
+        },
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockHandle).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          messageAttributes: {
+            journey: { DataType: "String", StringValue: "demo-journey" },
+            correlatorId: { DataType: "String", StringValue: "tx-1" },
+          },
+        }),
+      );
+    });
+
+    it("returns 200 with messageAttributes defaulted and stringified", async () => {
+      const mockHandle = jest.fn().mockResolvedValue(undefined);
+      const handler = createHealthHandler({
+        manualApi: {
+          enabled: true,
+          getHandler: () => ({ handle: mockHandle }),
+        },
+      });
+
+      const res = await invokeHandler(handler, {
+        method: "POST",
+        url: "/api/manual",
+        body: {
+          queueName: "q",
+          message: {},
+          messageAttributes: {
+            missingFields: {},
+            numericValue: 123,
+          },
+        },
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockHandle).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          messageAttributes: {
+            missingFields: { DataType: "String", StringValue: "" },
+            numericValue: { DataType: "String", StringValue: "123" },
+          },
+        }),
+      );
+    });
+
     it("returns 500 when handler.handle throws", async () => {
       const mockHandle = jest.fn().mockRejectedValue(new Error("handler error"));
       const handler = createHealthHandler({
         manualApi: {
           enabled: true,
-          resolveHandler: () => ({ handle: mockHandle }),
+          getHandler: () => ({ handle: mockHandle }),
         },
       });
 
@@ -310,7 +391,7 @@ describe("createHealthHandler", () => {
 
     it("returns 413 when body exceeds 1MB", async () => {
       const handler = createHealthHandler({
-        manualApi: { enabled: true, resolveHandler: () => undefined },
+        manualApi: { enabled: true, getHandler: () => undefined },
       });
       const largeBody = Buffer.alloc(1_100_000, "x");
       const res = await invokeHandler(handler, {
@@ -326,7 +407,7 @@ describe("createHealthHandler", () => {
       const handler = createHealthHandler({
         manualApi: {
           enabled: true,
-          resolveHandler: () => ({ handle: mockHandle }),
+          getHandler: () => ({ handle: mockHandle }),
         },
       });
 

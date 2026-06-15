@@ -16,11 +16,11 @@ const pinoMock = Object.assign(
 jest.mock("pino", () => pinoMock);
 jest.mock("node:crypto", () => ({ randomUUID: jest.fn(() => "uuid-123") }));
 jest.mock("@/infra/logger/step-name-map", () => ({
-  resolveStepName: jest.fn(() => "STEP_RESOLVED"),
+  getStepName: jest.fn(() => "STEP_RESOLVED"),
 }));
 
 import { createLogModel, LogCategory } from "@/infra/logger/col-logger";
-const { resolveStepName } = jest.requireMock(
+const { getStepName } = jest.requireMock(
   "@/infra/logger/step-name-map",
 ) as typeof import("@/infra/logger/step-name-map");
 
@@ -73,7 +73,6 @@ describe("col-logger", () => {
       result_code: "200",
       result_desc: "success",
       elapsed_time: 10000,
-      step_name: "tx-1",
       endpoint: "/orders/create",
       request: "[Circular or Non-serializable]",
       response: JSON.stringify({ ok: true }),
@@ -81,8 +80,9 @@ describe("col-logger", () => {
       ref_id: "ref-1",
       remark: "note",
     });
+    expect(orderPayload).not.toHaveProperty("step_name");
 
-    expect(resolveStepName).toHaveBeenCalledWith("create-order", "/orders/create", "post");
+    expect(getStepName).toHaveBeenCalledWith("create-order", "/orders/create", "post");
 
     const [stepPayload] = mockLogger.info.mock.calls[1];
     expect(stepPayload).toMatchObject({
@@ -111,6 +111,28 @@ describe("col-logger", () => {
       elapsed_time: 123,
       result_code: "0",
       result_desc: "success",
+    });
+  });
+
+  test("logIn uses result_desc override for order and step payloads", () => {
+    const model = createLogModel({ txid: "tx-desc" });
+
+    model.logIn("Override Desc", {
+      endpoint: "/orders/override",
+      result_code: "400",
+      result_desc: "validation failed",
+    });
+
+    const [orderPayload] = mockLogger.info.mock.calls[0];
+    expect(orderPayload).toMatchObject({
+      result_code: "400",
+      result_desc: "validation failed",
+    });
+
+    const [stepPayload] = mockLogger.info.mock.calls[1];
+    expect(stepPayload).toMatchObject({
+      result_code: "400",
+      result_desc: "validation failed",
     });
   });
 
@@ -190,7 +212,7 @@ describe("col-logger", () => {
         data: { error: true },
       }),
     });
-    expect(resolveStepName).toHaveBeenCalledWith("fetchOrder", "/orders/1", "GET");
+    expect(getStepName).toHaveBeenCalledWith("fetch-order", "/orders/1", "GET");
   });
 
   test("logStep handles axios error with missing config/response", () => {
@@ -309,7 +331,7 @@ describe("col-logger", () => {
       LogCategory.STEP,
     );
 
-    expect(resolveStepName).toHaveBeenCalledWith("create-order-test", "/orders/create", "PUT");
+    expect(getStepName).toHaveBeenCalledWith("create-order-test", "/orders/create", "PUT");
     expect(mockLogger.info).toHaveBeenCalledTimes(2);
 
     const [stepPayload] = mockLogger.info.mock.calls[0];
@@ -338,7 +360,7 @@ describe("col-logger", () => {
 
     model.logOut("Trail-", { endpoint: "/orders/trail" });
 
-    expect(resolveStepName).toHaveBeenCalledWith("trail", "/orders/trail", undefined);
+    expect(getStepName).toHaveBeenCalledWith("trail", "/orders/trail", undefined);
   });
 
   test("logStep uses randomUUID and respects explicit log level", () => {
@@ -385,6 +407,67 @@ describe("col-logger", () => {
       result_desc: "oops",
       remark: "stack-trace",
     });
+  });
+
+  test("logError uses result_desc override for error and step payloads", () => {
+    const model = createLogModel({ txid: "tx-error-desc" });
+
+    model.logError("Override Error Desc", {
+      error: { message: "original error" },
+      result_desc: "mapped business failure",
+    });
+
+    const [stepPayload] = mockLogger.error.mock.calls[0];
+    expect(stepPayload).toMatchObject({
+      result_desc: "mapped business failure",
+    });
+
+    const [errorPayload] = mockLogger.error.mock.calls[1];
+    expect(errorPayload).toMatchObject({
+      result_desc: "mapped business failure",
+    });
+  });
+
+  test("logStep error uses caller result_code and step_response when error has no status", () => {
+    const model = createLogModel({ txid: "tx-step-fallback" });
+
+    model.logStep("Fallback Error Fields", {
+      txid: "tx-step-fallback",
+      activity_name: "fallbackErrorFields",
+      error: { message: "timeout" },
+      result_code: "504",
+      step_response: { message: "gateway timeout" },
+    });
+
+    const [stepPayload] = mockLogger.error.mock.calls[0];
+    expect(stepPayload).toMatchObject({
+      result_code: "504",
+      result_desc: "timeout",
+      endpoint: "",
+      step_response: JSON.stringify({ message: "gateway timeout" }),
+    });
+  });
+
+  test("logStep error uses caller endpoint when error has no url", () => {
+    const model = createLogModel({ txid: "tx-step-endpoint" });
+
+    model.logStep("Fallback Error Endpoint", {
+      txid: "tx-step-endpoint",
+      activity_name: "fallbackErrorEndpoint",
+      endpoint: "/fallback-endpoint",
+      error: { message: "timeout" },
+    });
+
+    const [stepPayload] = mockLogger.error.mock.calls[0];
+    expect(stepPayload).toMatchObject({
+      endpoint: "/fallback-endpoint",
+      step_name: "STEP_RESOLVED",
+    });
+    expect(getStepName).toHaveBeenCalledWith(
+      "fallback-error-endpoint",
+      "/fallback-endpoint",
+      undefined,
+    );
   });
 
   test("logStep handles non-axios error without code", () => {
@@ -468,11 +551,7 @@ describe("col-logger", () => {
 
     model.logError("Update Order", { txid: "tx-axios", error: axiosError });
 
-    expect(resolveStepName).toHaveBeenCalledWith(
-      "update-order",
-      "https://api2.test/orders/9",
-      "PUT",
-    );
+    expect(getStepName).toHaveBeenCalledWith("update-order", "https://api2.test/orders/9", "PUT");
   });
 
   test("clone returns a new logger model", () => {

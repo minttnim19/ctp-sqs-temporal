@@ -1,8 +1,8 @@
 import type { ChildProcess } from "node:child_process";
 
-import { env, resolveQueueNames } from "@/config/env";
-import { ensureQueues, getQueueUrl } from "@/infra/aws/queue-setup";
-import { resolveQueueHandler } from "@/infra/aws/queue-routing";
+import { env, getQueueNames } from "@/config/env";
+import { ensureQueues, getQueueUrl as fetchQueueUrl } from "@/infra/aws/queue-setup";
+import { getQueueHandler } from "@/infra/aws/queue-routing";
 import { sqsClient } from "@/infra/aws/sqs-client";
 import { mapSqsMessage } from "@/infra/aws/sqs-message-mapper";
 import { SqsPoller } from "@/infra/aws/sqs-poller";
@@ -21,13 +21,13 @@ export async function bootstrap() {
   let isRestartingWorkers = false;
 
   const composition = createComposition();
-  const resolveHandler = (queueName: string) =>
-    resolveQueueHandler(queueName, env.APP_ENV, composition.queueHandlers);
+  const getHandler = (queueName: string) =>
+    getQueueHandler(queueName, env.APP_ENV, composition.queueHandlers);
 
   const isLocal = env.NODE_ENV !== "production" && Boolean(env.SQS_ENDPOINT);
   const allowAutoCreateQueues = env.AUTO_CREATE_QUEUES && isLocal;
 
-  const queueNames = resolveQueueNames(env);
+  const queueNames = getQueueNames(env);
 
   const pollers: SqsPoller[] = [];
   if (env.AUTO_CREATE_QUEUES && !allowAutoCreateQueues) {
@@ -41,13 +41,13 @@ export async function bootstrap() {
   }
 
   for (const name of queueNames) {
-    const useCase = resolveHandler(name);
+    const useCase = getHandler(name);
     if (!useCase) {
       logger.warn({ queue: name }, "No handler mapped for queue; skipping");
       continue;
     }
 
-    const queueUrl = await resolveQueueUrl(name, allowAutoCreateQueues, env.SQS_DLQ_SUFFIX);
+    const queueUrl = await getQueueUrlForName(name, allowAutoCreateQueues, env.SQS_DLQ_SUFFIX);
 
     const poller = new SqsPoller(
       sqsClient,
@@ -94,7 +94,7 @@ export async function bootstrap() {
     port: env.HEALTHCHECK_PORT,
     manualApi: {
       enabled: env.NODE_ENV === "development",
-      resolveHandler,
+      getHandler,
     },
   });
 
@@ -115,7 +115,7 @@ export async function bootstrap() {
   process.on("SIGTERM", shutdown("SIGTERM"));
 }
 
-export async function resolveQueueUrl(
+export async function getQueueUrlForName(
   name: string,
   allowAutoCreateQueues: boolean,
   dlqSuffix: string,
@@ -124,7 +124,7 @@ export async function resolveQueueUrl(
     const ensured = await ensureQueues(sqsClient, name, name + dlqSuffix);
     return ensured.mainUrl;
   }
-  return getQueueUrl(sqsClient, name);
+  return fetchQueueUrl(sqsClient, name);
 }
 
 export async function closeHealthServer(

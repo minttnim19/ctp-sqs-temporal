@@ -151,7 +151,7 @@ const EnvSchema = z.object({
 
 export const env = EnvSchema.parse(process.env);
 
-export function resolveQueueNames(envObj = env): string[] {
+export function getQueueNames(envObj = env): string[] {
   if (envObj.SQS_QUEUE_NAMES && envObj.SQS_QUEUE_NAMES.trim().length > 0) {
     return envObj.SQS_QUEUE_NAMES.split(",")
       .map((s) => s.trim())

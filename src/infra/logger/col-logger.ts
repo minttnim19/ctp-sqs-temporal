@@ -4,9 +4,12 @@ import path from "node:path";
 
 import pino from "pino";
 
-import { resolveStepName } from "@/infra/logger/step-name-map";
+import { getStepName } from "@/infra/logger/step-name-map";
 import { env } from "@/config/env";
-
+import { stringifyUnknown } from "@/utils/json";
+import { getNumberField, getStringField, toRecord } from "@/utils/object";
+import { toKebabCase } from "@/utils/string";
+import { type UnknownRecord } from "@/utils/object";
 export enum LogCategory {
   ORDER = "order",
   STEP = "step",
@@ -24,7 +27,7 @@ type BaseLogFields = {
   result_code: string;
   result_desc: string;
   elapsed_time: number;
-  step_name: string;
+  step_name?: string;
   search_key?: string;
   remark?: string;
 };
@@ -65,6 +68,7 @@ type BaseParams = {
   response?: unknown;
   elapsed_time?: number;
   result_code?: string;
+  result_desc?: string;
   search_key?: string;
   remark?: string;
 };
@@ -107,6 +111,7 @@ type LogStepParams = {
   step_response?: unknown;
   elapsed_time?: number;
   result_code?: string;
+  result_desc?: string;
   activity_name: string;
   error?: unknown;
   search_key?: string;
@@ -173,8 +178,6 @@ type LogPayloadBaseParams = {
   source: BaseParams;
 };
 
-type UnknownRecord = Record<string, unknown>;
-
 const timestamp = (): string => {
   const date = new Date();
   const now = date.toISOString();
@@ -227,29 +230,6 @@ const setupLogger = (): pino.Logger => {
 
 export const logger = setupLogger();
 
-const stringifyData = (data: unknown): string => {
-  if (typeof data === "string") return data;
-  if (data === null || data === undefined) return "";
-  try {
-    return JSON.stringify(data);
-  } catch {
-    return "[Circular or Non-serializable]";
-  }
-};
-
-const toRecord = (value: unknown): UnknownRecord | undefined =>
-  typeof value === "object" && value !== null ? (value as UnknownRecord) : undefined;
-
-const getString = (source: UnknownRecord | undefined, field: string): string | undefined => {
-  const value = source?.[field];
-  return typeof value === "string" ? value : undefined;
-};
-
-const getNumber = (source: UnknownRecord | undefined, field: string): number | undefined => {
-  const value = source?.[field];
-  return typeof value === "number" ? value : undefined;
-};
-
 const coalesceNonEmptyString = (value: string | undefined | null, fallback: string): string =>
   value === undefined || value === null || value === "" ? fallback : value;
 
@@ -258,26 +238,15 @@ const resultDesc = (result_code: string): string => {
   return codes.includes(result_code) ? "success" : "failed";
 };
 
-const toKebabCase = (str: string): string =>
-  str
-    .trim()
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replaceAll(/[-_.\s]+/g, "-")
-    .replaceAll(/[^\w-]/g, "")
-    .replaceAll(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
-
 const getBaseError = (error: UnknownRecord): ParsedError => ({
-  name: getString(error, "name"),
-  message: getString(error, "message"),
-  stack: getString(error, "stack"),
+  name: getStringField(error, "name"),
+  message: getStringField(error, "message"),
+  stack: getStringField(error, "stack"),
   cause: error["cause"],
 });
 
 const getErrorStatus = (error: UnknownRecord): number | undefined =>
-  getNumber(error, "status") ?? getNumber(error, "statusCode");
+  getNumberField(error, "status") ?? getNumberField(error, "statusCode");
 
 const getFullUrl = (configUrl?: string, baseURL?: string): string | undefined => {
   if (!configUrl) return undefined;
@@ -294,8 +263,8 @@ const getRequestInfo = (config: UnknownRecord | undefined): ParsedError["request
 const getResponseInfo = (response: UnknownRecord | undefined): ParsedError["response"] =>
   response
     ? {
-        status: getNumber(response, "status"),
-        statusText: getString(response, "statusText"),
+        status: getNumberField(response, "status"),
+        statusText: getStringField(response, "statusText"),
         data: response["data"],
       }
     : undefined;
@@ -303,16 +272,16 @@ const getResponseInfo = (response: UnknownRecord | undefined): ParsedError["resp
 const getAxiosError = (error: UnknownRecord): ParsedError => {
   const config = toRecord(error["config"]);
   const response = toRecord(error["response"]);
-  const configUrl = getString(config, "url");
-  const baseURL = getString(config, "baseURL");
+  const configUrl = getStringField(config, "url");
+  const baseURL = getStringField(config, "baseURL");
 
   return {
     isAxiosError: true,
-    code: getString(error, "code"),
-    status: getNumber(response, "status"),
-    statusText: getString(response, "statusText"),
+    code: getStringField(error, "code"),
+    status: getNumberField(response, "status"),
+    statusText: getStringField(response, "statusText"),
     url: configUrl,
-    method: getString(config, "method")?.toUpperCase(),
+    method: getStringField(config, "method")?.toUpperCase(),
     fullUrl: getFullUrl(configUrl, baseURL),
     request: getRequestInfo(config),
     response: getResponseInfo(response),
@@ -324,7 +293,7 @@ const getErrorInfo = (err: unknown): ParsedError => {
   if (!error) return {};
   const baseError = getBaseError(error);
   if (error["isAxiosError"] === true) return { ...baseError, ...getAxiosError(error) };
-  return { ...baseError, code: getString(error, "code"), status: getErrorStatus(error) };
+  return { ...baseError, code: getStringField(error, "code"), status: getErrorStatus(error) };
 };
 
 const getStepParams = (msg: string, txid: string, params: BaseParams): LogStepParams => ({
@@ -334,6 +303,7 @@ const getStepParams = (msg: string, txid: string, params: BaseParams): LogStepPa
   step_request: params.request,
   step_response: params.response,
   result_code: params.result_code,
+  result_desc: params.result_desc,
   activity_name: toKebabCase(msg),
   search_key: params.search_key,
   remark: params.remark,
@@ -342,24 +312,25 @@ const getStepParams = (msg: string, txid: string, params: BaseParams): LogStepPa
 const getErrorStepParams = (msg: string, txid: string, params: LogErrorParams): LogStepParams => ({
   txid,
   error: params.error,
+  result_desc: params.result_desc,
   activity_name: toKebabCase(msg),
   search_key: params.search_key,
   remark: params.remark,
 });
 
 const getErrorStepData = (params: LogStepParams, errorInfo: ParsedError): ResolvedStepData => ({
-  result_code: coalesceNonEmptyString(errorInfo.status?.toString(), "500"),
-  step_name: resolveStepName(params.activity_name, errorInfo.url, errorInfo.method),
-  endpoint: coalesceNonEmptyString(errorInfo.url, ""),
+  result_code: coalesceNonEmptyString(errorInfo.status?.toString(), params.result_code ?? "500"),
+  step_name: getStepName(params.activity_name, errorInfo.url ?? params.endpoint, errorInfo.method),
+  endpoint: coalesceNonEmptyString(errorInfo.url ?? params.endpoint, ""),
   message: coalesceNonEmptyString(errorInfo.message, ""),
   step_request: errorInfo.request ?? params.step_request,
-  step_response: errorInfo.response,
+  step_response: errorInfo.response ?? params.step_response,
   remark: errorInfo.stack,
 });
 
 const getStepData = (params: LogStepParams): ResolvedStepData => ({
   result_code: coalesceNonEmptyString(params.result_code, "0"),
-  step_name: resolveStepName(params.activity_name, params.endpoint, params.method),
+  step_name: getStepName(params.activity_name, params.endpoint, params.method),
   endpoint: coalesceNonEmptyString(params.endpoint, ""),
   step_request: params.step_request,
   step_response: params.step_response,
@@ -369,8 +340,8 @@ const getStepData = (params: LogStepParams): ResolvedStepData => ({
 const getErrorLogValues = (params: LogErrorParams): ErrorLogValues => ({
   result_code: coalesceNonEmptyString(params.result_code, "500"),
   endpoint: coalesceNonEmptyString(params.endpoint, ""),
-  request: stringifyData(params.request),
-  response: stringifyData(params.response),
+  request: stringifyUnknown(params.request),
+  response: stringifyUnknown(params.response),
 });
 
 const getErrorLogValuesFromError = (
@@ -381,8 +352,8 @@ const getErrorLogValuesFromError = (
   return {
     result_code: coalesceNonEmptyString(errorInfo.status?.toString(), "500"),
     endpoint: coalesceNonEmptyString(errorInfo.url, fallback.endpoint),
-    request: stringifyData(errorInfo.request),
-    response: stringifyData(errorInfo.response),
+    request: stringifyUnknown(errorInfo.request),
+    response: stringifyUnknown(errorInfo.response),
   };
 };
 
@@ -421,11 +392,11 @@ const buildLogPayloadBase = ({
   end_date: new Date().toISOString(),
   result_indicator,
   result_code,
-  result_desc: resultDesc(result_code),
+  result_desc: coalesceNonEmptyString(source.result_desc, resultDesc(result_code)),
   elapsed_time,
   endpoint: source.endpoint,
-  request: stringifyData(source.request),
-  response: stringifyData(source.response),
+  request: stringifyUnknown(source.request),
+  response: stringifyUnknown(source.response),
   search_key: source.search_key,
   remark: source.remark,
 });
@@ -452,9 +423,13 @@ export const createLogModel = ({
 
   const _logStep = (msg: string, params: LogStepParams, logLevel?: LogLevel): void => {
     const txid = getTxid(params.txid, defaultTxid);
-    const stepData = params.error
-      ? getErrorStepData(params, getErrorInfo(params.error))
-      : getStepData(params);
+    const normalizedParams = {
+      ...params,
+      activity_name: toKebabCase(params.activity_name),
+    };
+    const stepData = normalizedParams.error
+      ? getErrorStepData(normalizedParams, getErrorInfo(normalizedParams.error))
+      : getStepData(normalizedParams);
     const result_desc = resultDesc(stepData.result_code);
 
     const payload: StepLogData = {
@@ -467,17 +442,17 @@ export const createLogModel = ({
       end_date: new Date().toISOString(),
       result_indicator: result_desc.toUpperCase(),
       result_code: stepData.result_code,
-      result_desc: getResultDescText(stepData.message, result_desc),
-      elapsed_time: elapsedTime(params.elapsed_time),
+      result_desc: getResultDescText(normalizedParams.result_desc ?? stepData.message, result_desc),
+      elapsed_time: elapsedTime(normalizedParams.elapsed_time),
       step_name: stepData.step_name,
       endpoint: stepData.endpoint,
-      step_request: stringifyData(stepData.step_request),
-      step_response: stringifyData(stepData.step_response),
-      search_key: params.search_key,
+      step_request: stringifyUnknown(stepData.step_request),
+      step_response: stringifyUnknown(stepData.step_response),
+      search_key: normalizedParams.search_key,
       remark: stepData.remark,
     };
 
-    logger[getLogLevel(params.error, logLevel)](payload, msg);
+    logger[getLogLevel(normalizedParams.error, logLevel)](payload, msg);
   };
 
   const logIn = (msg: string, params: LogInParams, log_cat = LogCategory.ORDER): void => {
@@ -496,7 +471,7 @@ export const createLogModel = ({
         result_code,
         source: params,
       }),
-      step_name: txid,
+      // step_name: txid,
       ref_id: params.ref_id,
     };
 
@@ -520,7 +495,7 @@ export const createLogModel = ({
         result_code,
         source: params,
       }),
-      step_name: txid,
+      // step_name: txid,
       ref_id: params.ref_id,
       msisdn: params.msisdn,
       employee_id: params.employee_id,
@@ -567,7 +542,7 @@ export const createLogModel = ({
           response: errorValues.response,
         },
       }),
-      step_name: txid,
+      // step_name: txid,
       ref_id: params.ref_id,
     };
 

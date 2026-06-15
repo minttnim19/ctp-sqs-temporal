@@ -34,7 +34,7 @@ const stepNameOrActivity = (stepName: string | undefined, activity: string): str
   return stepName;
 };
 
-export const resolveStepName = (activity: string, endpoint?: string, method?: string): string => {
+export const getStepName = (activity: string, endpoint?: string, method?: string): string => {
   if (endpoint === undefined || STEP_NAME_RULES.length === 0) return activity;
 
   const normalizedEndpoint = normalizeEndpoint(endpoint);
