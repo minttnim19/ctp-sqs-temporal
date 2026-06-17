@@ -36,10 +36,6 @@ export class ScheduledWorkflowDispatcher implements MessageHandler<unknown> {
             correlatorId,
           },
         ],
-        retryPolicy: {
-          maximumAttempts: this.options.retryAttempts,
-          initialIntervalMs: this.options.retryDelayMs,
-        },
       });
       log.logStep("ScheduledWorkflowDispatcher dispatched", {
         activity_name: "ScheduledWorkflowDispatcher",

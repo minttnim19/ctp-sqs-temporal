@@ -20,10 +20,6 @@ describe("TemporalWorkflowStarter", () => {
       workflowId: "dummy:order-1:1",
       correlationId: "tx-1",
       args: [{ resource: { id: "order-1" } }],
-      retryPolicy: {
-        maximumAttempts: 3,
-        initialIntervalMs: 5000,
-      },
     });
 
     expect(start).toHaveBeenCalledWith("DummyWorkflow", {

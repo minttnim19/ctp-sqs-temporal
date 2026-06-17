@@ -38,10 +38,6 @@ export class DummyWorkflowDispatcher implements MessageHandler<Message> {
             correlatorId,
           },
         ],
-        retryPolicy: {
-          maximumAttempts: this.options.retryAttempts,
-          initialIntervalMs: this.options.retryDelayMs,
-        },
       });
       log.logStep("DummyWorkflowDispatcher dispatched", {
         activity_name: "DummyWorkflowDispatcher",
