@@ -1,6 +1,7 @@
 import { proxyActivities } from "@temporalio/workflow";
 
 import type { ActivityResult } from "@/domain/api-response";
+import type { ActivityTraceContext } from "@/temporal/activities/activity-trace-context";
 import type * as activities from "@/temporal/activities/scheduled.activities";
 
 export async function ScheduledJobWorkflow(
@@ -19,5 +20,8 @@ export async function ScheduledJobWorkflow(
     },
   });
 
-  return scheduledActivity();
+  const traceContext: ActivityTraceContext | undefined = options.correlatorId
+    ? { correlatorId: options.correlatorId }
+    : undefined;
+  return scheduledActivity(traceContext);
 }

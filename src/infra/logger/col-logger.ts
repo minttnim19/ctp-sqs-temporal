@@ -250,7 +250,7 @@ const getErrorStatus = (error: UnknownRecord): number | undefined =>
 
 const getFullUrl = (configUrl?: string, baseURL?: string): string | undefined => {
   if (!configUrl) return undefined;
-  if (baseURL) return baseURL + configUrl;
+  if (baseURL) return `${baseURL.replace(/\/$/, "")}/${configUrl.replace(/^\//, "")}`;
   if (configUrl.startsWith("http")) return configUrl;
   return undefined;
 };
@@ -311,6 +311,11 @@ const getStepParams = (msg: string, txid: string, params: BaseParams): LogStepPa
 
 const getErrorStepParams = (msg: string, txid: string, params: LogErrorParams): LogStepParams => ({
   txid,
+  endpoint: params.endpoint,
+  method: params.method,
+  step_request: params.request,
+  step_response: params.response,
+  result_code: params.result_code,
   error: params.error,
   result_desc: params.result_desc,
   activity_name: toKebabCase(msg),
@@ -320,8 +325,12 @@ const getErrorStepParams = (msg: string, txid: string, params: LogErrorParams): 
 
 const getErrorStepData = (params: LogStepParams, errorInfo: ParsedError): ResolvedStepData => ({
   result_code: coalesceNonEmptyString(errorInfo.status?.toString(), params.result_code ?? "500"),
-  step_name: getStepName(params.activity_name, errorInfo.url ?? params.endpoint, errorInfo.method),
-  endpoint: coalesceNonEmptyString(errorInfo.url ?? params.endpoint, ""),
+  step_name: getStepName(
+    params.activity_name,
+    errorInfo.fullUrl ?? errorInfo.url ?? params.endpoint,
+    errorInfo.method ?? params.method,
+  ),
+  endpoint: coalesceNonEmptyString(errorInfo.fullUrl ?? errorInfo.url ?? params.endpoint, ""),
   message: coalesceNonEmptyString(errorInfo.message, ""),
   step_request: errorInfo.request ?? params.step_request,
   step_response: errorInfo.response ?? params.step_response,
@@ -351,7 +360,7 @@ const getErrorLogValuesFromError = (
   const errorInfo = getErrorInfo(params.error);
   return {
     result_code: coalesceNonEmptyString(errorInfo.status?.toString(), "500"),
-    endpoint: coalesceNonEmptyString(errorInfo.url, fallback.endpoint),
+    endpoint: coalesceNonEmptyString(errorInfo.fullUrl ?? errorInfo.url, fallback.endpoint),
     request: stringifyUnknown(errorInfo.request),
     response: stringifyUnknown(errorInfo.response),
   };

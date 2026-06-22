@@ -200,7 +200,7 @@ describe("col-logger", () => {
       result_code: "404",
       result_desc: "boom",
       step_name: "STEP_RESOLVED",
-      endpoint: "/orders/1",
+      endpoint: "https://api.test/orders/1",
       step_request: JSON.stringify({
         headers: { "x-id": "1" },
         params: { q: "x" },
@@ -212,7 +212,7 @@ describe("col-logger", () => {
         data: { error: true },
       }),
     });
-    expect(getStepName).toHaveBeenCalledWith("fetch-order", "/orders/1", "GET");
+    expect(getStepName).toHaveBeenCalledWith("fetch-order", "https://api.test/orders/1", "GET");
   });
 
   test("logStep handles axios error with missing config/response", () => {
@@ -470,6 +470,28 @@ describe("col-logger", () => {
     );
   });
 
+  test("logError error step uses caller endpoint when error has no url", () => {
+    const model = createLogModel({ txid: "tx-error-endpoint" });
+
+    model.logError("Fallback Error Endpoint", {
+      txid: "tx-error-endpoint",
+      endpoint: "/fallback-endpoint",
+      method: "POST",
+      error: { message: "timeout" },
+    });
+
+    const [stepPayload] = mockLogger.error.mock.calls[0];
+    expect(stepPayload).toMatchObject({
+      endpoint: "/fallback-endpoint",
+      step_name: "STEP_RESOLVED",
+    });
+    expect(getStepName).toHaveBeenCalledWith(
+      "fallback-error-endpoint",
+      "/fallback-endpoint",
+      "POST",
+    );
+  });
+
   test("logStep handles non-axios error without code", () => {
     const model = createLogModel({ txid: "tx-base" });
 
@@ -552,6 +574,33 @@ describe("col-logger", () => {
     model.logError("Update Order", { txid: "tx-axios", error: axiosError });
 
     expect(getStepName).toHaveBeenCalledWith("update-order", "https://api2.test/orders/9", "PUT");
+  });
+
+  test("logError uses axios baseURL and url as full endpoint", () => {
+    const model = createLogModel({ txid: "tx-axios-base-url" });
+
+    const axiosError = {
+      isAxiosError: true,
+      message: "bad",
+      config: {
+        url: "/orders/10",
+        baseURL: "https://api3.test/",
+        method: "post",
+      },
+      response: { status: 502, statusText: "Bad Gateway", data: { fail: true } },
+    };
+
+    model.logError("Create Order", { txid: "tx-axios-base-url", error: axiosError });
+
+    const [stepPayload] = mockLogger.error.mock.calls[0];
+    expect(stepPayload).toMatchObject({
+      endpoint: "https://api3.test/orders/10",
+    });
+    const [errorPayload] = mockLogger.error.mock.calls[1];
+    expect(errorPayload).toMatchObject({
+      endpoint: "https://api3.test/orders/10",
+    });
+    expect(getStepName).toHaveBeenCalledWith("create-order", "https://api3.test/orders/10", "POST");
   });
 
   test("clone returns a new logger model", () => {

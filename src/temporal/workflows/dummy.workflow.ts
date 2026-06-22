@@ -2,6 +2,7 @@ import { proxyActivities } from "@temporalio/workflow";
 import type { Message } from "@commercetools/platform-sdk";
 
 import type { ActivityResult } from "@/domain/api-response";
+import type { ActivityTraceContext } from "@/temporal/activities/activity-trace-context";
 import type * as activities from "@/temporal/activities/dummy.activities";
 
 export async function DummyWorkflow(
@@ -20,5 +21,8 @@ export async function DummyWorkflow(
     },
   });
 
-  return dummyActivity();
+  const traceContext: ActivityTraceContext | undefined = options.correlatorId
+    ? { correlatorId: options.correlatorId }
+    : undefined;
+  return dummyActivity(traceContext);
 }

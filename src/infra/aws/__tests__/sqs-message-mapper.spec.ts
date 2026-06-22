@@ -48,6 +48,37 @@ describe("sqs-message-mapper", () => {
     expect(mapSqsMessage(message).payload).toEqual({ event: "created" });
   });
 
+  it("maps SNS envelope message attributes into SQS-like metadata", () => {
+    const message: Message = {
+      Body: JSON.stringify({
+        Type: "Notification",
+        TopicArn: "arn",
+        Message: JSON.stringify({ event: "created" }),
+        MessageAttributes: {
+          correlatorId: {
+            Type: "String",
+            Value: "a6627cf4-c8de-4b8a-a141-1e1f97fc8a37",
+          },
+          type: {
+            Type: "String.Array",
+            Value: '["OrderCreated"]',
+          },
+        },
+      }),
+    };
+
+    expect(mapSqsMessage(message).metadata.messageAttributes).toEqual({
+      correlatorId: {
+        DataType: "String",
+        StringValue: "a6627cf4-c8de-4b8a-a141-1e1f97fc8a37",
+      },
+      type: {
+        DataType: "String.Array",
+        StringValue: '["OrderCreated"]',
+      },
+    });
+  });
+
   it("defaults missing metadata to empty values", () => {
     expect(mapSqsMessage({}).metadata).toEqual({
       messageId: "",
