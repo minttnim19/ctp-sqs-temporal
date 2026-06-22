@@ -5,7 +5,7 @@ phases:
   install:
     runtime-versions:
       java: corretto17
-      nodejs: 20
+      nodejs: 24
     commands:
       - set -euo pipefail
   pre_build:

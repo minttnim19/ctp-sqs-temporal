@@ -75,7 +75,6 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/db:/docker-entrypoint-initdb.d:ro
     networks:
       - my-network
     healthcheck:
