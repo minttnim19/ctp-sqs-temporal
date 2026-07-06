@@ -1,6 +1,6 @@
 import type { Message } from "@aws-sdk/client-sqs";
 
-import { mapSqsMessage } from "@/infra/aws/sqs-message-mapper";
+import { getSnsEnvelopeMessageAttributes, mapSqsMessage } from "@/infra/aws/sqs-message-mapper";
 
 describe("sqs-message-mapper", () => {
   it("maps a raw SQS body into an inbound message", () => {
@@ -75,6 +75,67 @@ describe("sqs-message-mapper", () => {
       type: {
         DataType: "String.Array",
         StringValue: '["OrderCreated"]',
+      },
+    });
+  });
+
+  it("merges SNS envelope and SQS record message attributes", () => {
+    const message: Message = {
+      Body: JSON.stringify({
+        Type: "Notification",
+        TopicArn: "arn",
+        Message: JSON.stringify({ event: "created" }),
+        MessageAttributes: {
+          correlatorId: {
+            Type: "String",
+            Value: "from-sns-envelope",
+          },
+          journey: {
+            Type: "String",
+            Value: "prebook",
+          },
+        },
+      }),
+      MessageAttributes: {
+        correlatorId: {
+          DataType: "String",
+          StringValue: "from-sqs-record",
+        },
+      },
+    };
+
+    expect(mapSqsMessage(message).metadata.messageAttributes).toEqual({
+      correlatorId: {
+        DataType: "String",
+        StringValue: "from-sqs-record",
+        BinaryListValues: undefined,
+        BinaryValue: undefined,
+        StringListValues: undefined,
+      },
+      journey: {
+        DataType: "String",
+        StringValue: "prebook",
+      },
+    });
+  });
+
+  it("extracts SNS envelope message attributes without unwrapping the body", () => {
+    const body = JSON.stringify({
+      Type: "Notification",
+      TopicArn: "arn",
+      Message: JSON.stringify({ event: "created" }),
+      MessageAttributes: {
+        correlatorId: {
+          Type: "String",
+          Value: "tx-1",
+        },
+      },
+    });
+
+    expect(getSnsEnvelopeMessageAttributes(body)).toEqual({
+      correlatorId: {
+        DataType: "String",
+        StringValue: "tx-1",
       },
     });
   });

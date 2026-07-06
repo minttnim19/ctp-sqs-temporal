@@ -5,39 +5,36 @@ import type {
   MessageAttribute,
   MessageMetadata,
 } from "@/application/models/inbound-message";
-import { safelyParse } from "@/utils/common";
+import { safelyParse, unwrapSnsEnvelope } from "@/utils/common";
 import { parseJson } from "@/utils/json";
 import { getStringField, isPlainObject, type UnknownRecord } from "@/utils/object";
 
-type SnsEnvelope = {
-  message: string;
-  messageAttributes: Record<string, MessageAttribute>;
-};
-
 export function mapSqsMessage<T>(message: Message): InboundMessage<T> {
-  const snsEnvelope = parseSnsEnvelope(message.Body);
-  const body = snsEnvelope?.message ?? message.Body;
+  const bodyText = message.Body;
+  const snsMessageAttributes = getSnsEnvelopeMessageAttributes(bodyText);
+  const messageAttributes = message.MessageAttributes
+    ? {
+        ...snsMessageAttributes,
+        ...mapMessageAttributes(message.MessageAttributes),
+      }
+    : snsMessageAttributes;
+  const body = unwrapSnsEnvelope(bodyText);
 
   return {
     payload: safelyParse<T>(body),
-    metadata: mapSqsMetadata(message, snsEnvelope?.messageAttributes ?? {}),
+    metadata: mapSqsMetadata(message, messageAttributes),
   };
 }
 
 function mapSqsMetadata(
   message: Message,
-  snsMessageAttributes: Record<string, MessageAttribute>,
+  messageAttributes: Record<string, MessageAttribute>,
 ): MessageMetadata {
-  const sqsMessageAttributes = mapMessageAttributes(message.MessageAttributes ?? {});
-
   return {
     messageId: message.MessageId ?? "",
     receiptHandle: message.ReceiptHandle ?? "",
     attributes: message.Attributes ? { ...message.Attributes } : {},
-    messageAttributes: {
-      ...snsMessageAttributes,
-      ...sqsMessageAttributes,
-    },
+    messageAttributes,
   };
 }
 
@@ -58,16 +55,14 @@ function mapMessageAttributes(
   );
 }
 
-function parseSnsEnvelope(body: string | undefined): SnsEnvelope | undefined {
-  if (!body) return undefined;
-
+export function getSnsEnvelopeMessageAttributes(
+  body: string | undefined,
+): Record<string, MessageAttribute> {
+  if (!body) return {};
   const envelope = parseJson(body);
-  if (!isSnsEnvelope(envelope)) return undefined;
+  if (!isSnsEnvelope(envelope)) return {};
 
-  return {
-    message: envelope["Message"],
-    messageAttributes: mapSnsMessageAttributes(envelope["MessageAttributes"]),
-  };
+  return mapSnsMessageAttributes(envelope["MessageAttributes"]);
 }
 
 function isSnsEnvelope(value: unknown): value is UnknownRecord & { Message: string } {
